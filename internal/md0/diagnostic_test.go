@@ -42,11 +42,10 @@ Result: **{{ doubled }}**`)
 	if err != nil {
 		t.Fatal(err)
 	}
+	token := runtimeTokenForHandler(t, handler)
 
-	badReq := httptest.NewRequest(http.MethodPost, "/render", strings.NewReader(`{"a":"nope"}`))
-	badReq.Header.Set("content-type", "application/json")
 	badRes := httptest.NewRecorder()
-	handler.ServeHTTP(badRes, badReq)
+	handler.ServeHTTP(badRes, runtimeJSONRequest(token, `{"a":"nope"}`))
 	if badRes.Code != http.StatusBadRequest {
 		t.Fatalf("bad input status=%d body=%s", badRes.Code, badRes.Body.String())
 	}
@@ -61,10 +60,8 @@ Result: **{{ doubled }}**`)
 		t.Fatalf("problem=%#v", problem)
 	}
 
-	goodReq := httptest.NewRequest(http.MethodPost, "/render", strings.NewReader(`{"a":"3"}`))
-	goodReq.Header.Set("content-type", "application/json")
 	goodRes := httptest.NewRecorder()
-	handler.ServeHTTP(goodRes, goodReq)
+	handler.ServeHTTP(goodRes, runtimeJSONRequest(token, `{"a":"3"}`))
 	if goodRes.Code != http.StatusOK {
 		t.Fatalf("recovery status=%d body=%s", goodRes.Code, goodRes.Body.String())
 	}
@@ -78,8 +75,8 @@ Result: **{{ doubled }}**`)
 }
 
 func TestInteractiveRuntimePageHasVisibleErrorChannel(t *testing.T) {
-	page := renderInteractiveRuntimePage("demo.md", `<div class="md0-doc"></div>`)
-	for _, want := range []string{`id="md0-status"`, `aria-live="polite"`, "payload.error", "aria-invalid", "node.outerHTML=patch.html"} {
+	page := renderInteractiveRuntimePage("demo.md", `<div class="md0-doc"></div>`, "test-capability-token")
+	for _, want := range []string{`id="md0-status"`, `aria-live="polite"`, `name="md0-runtime-token"`, "x-md0-token", "payload.error", "aria-invalid", "node.outerHTML=patch.html"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("interactive runtime page missing %q", want)
 		}
