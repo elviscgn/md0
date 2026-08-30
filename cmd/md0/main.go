@@ -11,8 +11,14 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
+		cliUI.logo()
+		fmt.Fprintln(os.Stderr)
 		usage()
 		os.Exit(2)
+	}
+	if looksLikeDocumentArg(os.Args[1]) {
+		launchDocument(os.Args[1])
+		return
 	}
 	switch os.Args[1] {
 	case "validate":
@@ -23,12 +29,15 @@ func main() {
 		cmdRender(os.Args[2:])
 	case "open":
 		cmdOpen(os.Args[2:])
+	case "edit":
+		cmdEdit(os.Args[2:])
 	case "inspect":
 		cmdInspect(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("md0", core.RuntimeVersion)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
+		cliError(fmt.Sprintf("unknown command %q", os.Args[1]))
+		fmt.Fprintln(os.Stderr)
 		usage()
 		os.Exit(2)
 	}
@@ -38,11 +47,15 @@ func usage() {
 	fmt.Fprint(os.Stderr, `md0 — safe computational Markdown
 
 Usage:
+  md0 FILE
+  md0 edit FILE
+  md0 open [-addr 127.0.0.1:8080] [--no-browser] [--values FILE] [--data NAME=FILE] FILE
   md0 validate [--values FILE] [--data NAME=FILE] FILE
   md0 eval [--values FILE] [--data NAME=FILE] FILE
   md0 render [-o FILE] [--values FILE] [--data NAME=FILE] [--snapshot FILE] FILE
-  md0 open [-addr 127.0.0.1:8080] [--values FILE] [--data NAME=FILE] FILE
   md0 inspect FILE
+
+Run md0 FILE in a terminal for the interactive document launcher.
 `)
 }
 
@@ -80,7 +93,7 @@ func loadValues(path string) map[string]string {
 
 func oneFile(name string, args []string) *core.Document {
 	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "%s expects exactly one file\n", name)
+		cliError(fmt.Sprintf("%s expects exactly one file", name))
 		os.Exit(2)
 	}
 	doc, err := core.ParseFile(args[0])
@@ -105,17 +118,20 @@ func cmdValidate(args []string) {
 	for _, a := range r.Assertions {
 		if !a.Passed {
 			failed = true
-			fmt.Fprintf(os.Stderr, "FAIL line %d: %s", a.Line, a.Source)
+			message := fmt.Sprintf("line %d: %s", a.Line, a.Source)
 			if a.Message != "" {
-				fmt.Fprintf(os.Stderr, " — %s", a.Message)
+				message += " — " + a.Message
 			}
-			fmt.Fprintln(os.Stderr)
+			newTerminalUI(os.Stderr).fail(message)
 		}
 	}
 	if failed {
 		os.Exit(1)
 	}
-	fmt.Printf("ok — %s is valid md0/PURE\n", doc.Path)
+	cliUI.command("validate")
+	cliUI.meta("document", doc.Path)
+	fmt.Fprintln(cliUI.out)
+	cliUI.success("valid md0/PURE document")
 }
 
 func cmdEval(args []string) {
@@ -181,15 +197,21 @@ func cmdRender(args []string) {
 	if err := os.WriteFile(*out, []byte(page), 0644); err != nil {
 		die(err)
 	}
-	fmt.Printf("wrote %s\n", *out)
+	cliUI.command("render")
+	cliUI.meta("document", doc.Path)
+	fmt.Fprintln(cliUI.out)
+	cliUI.success("rendered standalone HTML")
+	cliUI.action(*out)
 	if *snapshotPath != "" {
-		fmt.Printf("wrote %s\n", *snapshotPath)
+		cliUI.success("wrote durable snapshot")
+		cliUI.action(*snapshotPath)
 	}
 }
 
 func cmdOpen(args []string) {
 	fs := flag.NewFlagSet("open", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8080", "loopback listen address")
+	noBrowser := fs.Bool("no-browser", false, "do not open the browser automatically")
 	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
 	data := addDataFlags(fs)
 	fs.Parse(args)
@@ -199,7 +221,16 @@ func cmdOpen(args []string) {
 	if _, err := core.Evaluate(doc, values); err != nil {
 		dieDoc(doc, err)
 	}
-	if err := core.ServeFileWithOptions(doc.Path, *addr, values, *data); err != nil {
+	cliUI.command("open")
+	cliUI.meta("document", doc.Path)
+	cliUI.meta("runtime", "PURE")
+	cliUI.meta("watching", "enabled")
+	fmt.Fprintln(cliUI.out)
+	cliUI.success("parsed and evaluated")
+	cliUI.action("http://" + *addr)
+	fmt.Fprintln(cliUI.out, cliUI.paint(ansiDim, "  Ctrl+C to stop"))
+	scheduleBrowserOpen(*addr, *noBrowser)
+	if err := core.ServeFileWorkspaceWithOptions(doc.Path, *addr, values, *data); err != nil {
 		die(err)
 	}
 }
@@ -214,11 +245,11 @@ func dieDoc(doc *core.Document, err error) {
 }
 
 func dieSource(path string, err error) {
-	fmt.Fprintln(os.Stderr, "md0:", core.FormatDiagnostic(path, err))
+	newTerminalUI(os.Stderr).fail(core.FormatDiagnostic(path, err))
 	os.Exit(1)
 }
 
 func die(err error) {
-	fmt.Fprintln(os.Stderr, "md0:", err)
+	cliError(err.Error())
 	os.Exit(1)
 }

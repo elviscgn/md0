@@ -133,11 +133,12 @@ md0 validate [--values values.json] [--data name=file] document.md
 md0 eval [--values values.json] [--data name=file] document.md
 md0 render [-o report.html] [--values values.json] [--data name=file] [--snapshot snapshot.json] document.md
 md0 open [-addr 127.0.0.1:8080] [--values values.json] [--data name=file] document.md
+md0 edit document.md
 md0 inspect document.md
 md0 version
 ```
 
-`render` creates static HTML and can record a durable snapshot containing input values, source and attachment hashes, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
+`edit` opens a full-screen terminal source editor with line numbers, md0 syntax highlighting, and completion; `Ctrl+S` saves and `Ctrl+Q` quits. `render` creates static HTML and can record a durable snapshot containing input values, source and attachment hashes, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Use Settings → Edit source inside that viewer for optional browser editing. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
 
 ## md0/PURE
 

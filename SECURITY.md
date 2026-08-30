@@ -8,7 +8,7 @@ An md0/PURE document may calculate, react to typed inputs, conditionally render,
 
 The runtime treats the `.md` document, live input values, and explicitly selected data attachments as untrusted data. The goal is to prevent those values from becoming ambient host authority or executable browser markup.
 
-The host operator and other processes already running as the same local user are trusted. `md0 open` is a hardened **local viewer**, not an internet-facing application server, and it refuses non-loopback listen addresses.
+The host operator and other processes already running as the same local user are trusted. `md0 open` is a hardened **local tool**, not an internet-facing application server, and it refuses non-loopback listen addresses. `md0 edit` is a local terminal buffer and does not listen on a socket.
 
 ## Document boundary
 
@@ -46,13 +46,23 @@ Responses also set `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
 
 ## Local HTTP boundary
 
-`md0 open` only accepts loopback bind addresses such as `127.0.0.1`, `localhost`, or `::1`. Requests must also present a loopback `Host` on the expected port. If an `Origin` header is present, it must be the matching loopback origin; browser requests marked cross-site by `Sec-Fetch-Site` are rejected.
+`md0 open` only accepts loopback bind addresses such as `127.0.0.1`, `localhost`, or `::1`. Requests must also present a loopback `Host` on the expected port. If an `Origin` header is present, it must be the matching loopback origin; browser requests marked cross-site by `Sec-Fetch-Site` are rejected. `md0 edit` has no HTTP listener.
 
-Every page load receives a fresh cryptographically random 256-bit capability token and a separate `ReactiveSession`. `POST /render`, `POST /snapshot`, and `POST /markdown` must present that token in `X-MD0-Token`, so independent browser tabs do not share reactive state or exports. The session store is bounded to 32 live sessions and evicts the oldest session at capacity.
+Every viewer page load receives a fresh cryptographically random 256-bit capability token and a separate `ReactiveSession`. `POST /render`, `POST /snapshot`, and `POST /markdown` must present that token in `X-MD0-Token`, so independent browser tabs do not share reactive state or exports. The session store is bounded to 32 live sessions and evicts the oldest session at capacity.
 
 The non-mutating `GET /source-status` live-authoring probe is protected by the same loopback Host, Origin, and `Sec-Fetch-Site` boundary. It returns only the current source revision or a diagnostic. The host watches only the document path explicitly selected on the command line; the document language cannot choose another path.
 
 `POST /render` accepts only `application/json`, caps the request body at 1 MiB, and requires exactly one JSON object. Unknown input names and invalid typed values are rejected without committing partial reactive state.
+
+## Built-in editor write boundary
+
+`md0 open FILE` adds host-authoring endpoints around the **single source path explicitly selected by the operator** so the viewer's Settings panel can enable source editing. The document language cannot invoke these endpoints, choose a different path, or obtain the editor capability token. `md0 edit FILE` is a separate local terminal editor and does not start an HTTP server.
+
+The editor receives a separate cryptographically random 256-bit capability token in addition to the normal loopback Host, Origin, and `Sec-Fetch-Site` checks. Editor draft and save requests must present that token.
+
+Typing in the source pane does not mutate the filesystem. Draft source is bounded, parsed, evaluated, and rendered in memory. An explicit Save action or `Cmd/Ctrl+S` may write only the selected source path, preserving its existing file permissions. Editor saves carry the source revision originally opened by the browser and reject stale revisions instead of overwriting an external edit. The source remains subject to the 2 MiB and UTF-8 document bounds.
+
+The editor intentionally does not expose directory listing, arbitrary-path read/write, file creation, shell execution, environment access, or attachment rebinding. Data attachments remain those selected by the host when authoring mode was started.
 
 The HTTP server sets read-header, read, write, idle, and maximum-header limits. The runtime does not enable CORS.
 
@@ -74,6 +84,7 @@ The security corpus exercises security-sensitive behavior including:
 - undeclared, missing, duplicate, malformed, oversized, and excessively nested data attachments
 - live source diagnostics, recovery, and source-status request boundaries
 - capability-authenticated snapshot and updated-Markdown exports
+- editor source escaping, in-memory drafts, capability-token rejection, save-path scoping, and permission preservation
 
 CI runs this corpus explicitly in addition to the full unit suite, race detector, parser/evaluator fuzzing, 5,000-node scale benchmarks, zero-third-party-module proof, reproducible-build check, and cross-platform tests.
 
