@@ -22,11 +22,11 @@ The expression parser propagates lexer failures at every token advance rather th
 
 Mathematical notation is converted from a deliberately small LaTeX-like surface into renderer-controlled native MathML. It is not a TeX engine: there is no package loading, macro execution, arbitrary HTML command, file inclusion, shell escape, or external asset fetch.
 
-Semantic `plot` fences are converted to native SVG. Plot expressions are parsed with Go's standard-library `go/parser`, but parsed syntax is **not executed as Go**. md0 walks the resulting AST itself and accepts only numeric literals, the local variable `x`, constants `pi`/`e`, basic numeric operators, and an explicit allowlist of math functions. Selectors, methods, indexing, composite literals, strings, arbitrary identifiers, and unrecognized AST nodes fail closed.
+Semantic `plot` fences are converted to native SVG. Plot expressions are parsed with Go's standard-library `go/parser`, but parsed syntax is **not executed as Go**. md0 walks the resulting AST itself and accepts only numeric literals, the local variable `x`, constants `pi`/`e`, graph-registered numeric document values, basic numeric operators, and an explicit allowlist of math functions. Selectors, methods, indexing, composite literals, strings, unknown or non-numeric identifiers, and unrecognized AST nodes fail closed.
 
-Plot work is bounded to at most four curves and 32–1,024 samples per curve. Domain errors and non-finite values produce curve gaps or a visible plot diagnostic rather than expanding authority.
+Plot work is bounded to at most four curves and 32–1,024 samples per curve. Each curve/range expression is also bounded by source size, AST node count, and nesting depth. Domain errors and non-finite values produce curve gaps or a visible plot diagnostic rather than expanding authority.
 
-Ordinary fenced code continues to suppress `{{ ... }}` interpolation. Only semantic plot fences opt into interpolation so document parameters remain explicit dependency-graph inputs.
+Before evaluation, md0 scans semantic plot expressions and range bounds for external identifiers and adds them to the same dependency graph used by other reactive nodes. Rendering receives only those registered values rather than the full document environment. Consequently an interpolated string cannot inject a hidden document dependency. Ordinary fenced code continues to suppress `{{ ... }}` interpolation; semantic plot fences retain interpolation for explicit md0 expressions.
 
 ## Browser rendering boundary
 
@@ -92,7 +92,7 @@ The security corpus exercises security-sensitive behavior including:
 - invalid UTF-8 rejection
 - direct expression-parser lexer-error propagation
 - document, expression-token, expression-nesting, block-depth, string-input, computed-string, interpolation-output, chart, plot, and table limits
-- unsafe/unrecognized function-plot AST forms fail closed
+- unsafe/unrecognized function-plot AST forms, hidden dependencies, reserved-name collisions, and non-numeric direct values fail closed
 - undeclared, missing, duplicate, malformed, oversized, and excessively nested data attachments
 - live source diagnostics, recovery, and source-status request boundaries
 - capability-authenticated snapshot and updated-Markdown exports

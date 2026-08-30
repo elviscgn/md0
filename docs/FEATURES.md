@@ -45,7 +45,7 @@ Projected revenue is **{{ round(projected) }}**.
 
 `{{ expression }}` inserts an evaluated value into Markdown prose. Interpolation does not execute inside ordinary code spans or ordinary fenced code blocks.
 
-`plot` fences are intentionally semantic and may use interpolation to bind md0 values into a graph formula.
+`plot` fences are intentionally semantic. Bare document values in their numeric expressions become graph dependencies automatically; interpolation remains available for full md0 expressions.
 
 ## Explicit value display
 
@@ -151,7 +151,7 @@ Frequency: @input frequency number = 1
 
 ```plot
 title = Sine family
-y = {{ amplitude }} * sin({{ frequency }} * x)
+wave(x) = amplitude * sin(frequency * x)
 x = [-2*pi, 2*pi]
 samples = 320
 ```
@@ -159,7 +159,7 @@ samples = 320
 
 Changing `amplitude` or `frequency` causes the Markdown region containing the plot to be recomputed and patched by the existing reactive runtime.
 
-Up to four curves may share one coordinate plane using `y`, `y2`, `y3`, and `y4`, with optional `label`, `label2`, `label3`, and `label4`.
+Up to four named curves such as `f(x)` and `g(x)` may share one coordinate plane; their names become legend labels. Reactive numeric document values can also define range bounds. The legacy `y`, `y2`, `y3`, `y4` and label keys remain supported for existing documents, but cannot be mixed with named curves in one fence.
 
 See [`MATH_AND_PLOTS.md`](MATH_AND_PLOTS.md) for the numeric surface, limits, and security model.
 
@@ -242,7 +242,7 @@ Parser and evaluator errors identify source lines. File-backed CLI diagnostics i
 
 ## Resource limits
 
-md0 enforces explicit document, expression, table, chart, interpolation, output, session, and attachment bounds. Function plots additionally enforce 32–1024 samples and at most four curves. See [`../LIMITS.md`](../LIMITS.md).
+md0 enforces explicit document, expression, table, chart, interpolation, output, session, and attachment bounds. Function plots additionally enforce 32–1024 samples, at most four curves, and bounded expression size/AST complexity. See [`../LIMITS.md`](../LIMITS.md).
 
 ## md0/PURE authority boundary
 

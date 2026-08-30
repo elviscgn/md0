@@ -273,7 +273,7 @@ func completionSnippetFor(item editorCompletion) editorSnippet {
 	case "@chart":
 		return editorSnippet{source: "@chart \nlabels = []\nvalues = []\n@end", cursorLine: 0, cursorColumn: len([]rune("@chart "))}
 	case "```plot":
-		return editorSnippet{source: "```plot\ny = sin(x)\nx = [-2*pi, 2*pi]\n```", cursorLine: 1, cursorColumn: len([]rune("y = "))}
+		return editorSnippet{source: "```plot\nf(x) = sin(x)\nx = [-2*pi, 2*pi]\n```", cursorLine: 1, cursorColumn: len([]rune("f(x) = "))}
 	default:
 		column := len([]rune(item.insert)) - item.cursorBack
 		return editorSnippet{source: item.insert, cursorLine: 0, cursorColumn: max(0, column)}

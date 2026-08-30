@@ -21,6 +21,8 @@ md0/PURE intentionally bounds document execution and local-runtime I/O so malfor
 | Bar-chart values | 128 | chart validator |
 | Function-plot curves | 4 | semantic plot renderer |
 | Function-plot samples | 1,024 per curve | semantic plot renderer |
+| Function-plot expression text | 16 KiB per expression | bounded plot parser |
+| Function-plot expression AST | 512 nodes, 128 levels | allowlisted plot walker |
 | Table columns | 64 | table validator |
 | Table rows | 1,000 | table validator |
 | `POST /render` body | 1 MiB | `http.MaxBytesReader` |
@@ -37,7 +39,7 @@ Live string inputs are capped at 16 KiB. String-producing expressions cannot cre
 
 Host-provided values files are capped at 1 MiB. Explicit JSON and CSV attachments are capped individually and in aggregate; JSON conversion limits nesting and value count, while CSV uses the same table-oriented column and row ceilings as rendered tables. A document can name an attachment but cannot supply, construct, or discover its path.
 
-Charts, function plots, and tables have output-shape limits because they can multiply rendered DOM/SVG work even when their source expressions are small. A semantic `plot` fence may render at most four curves, and each curve is sampled at 32–1,024 points. Plot expressions are numeric-only and evaluated by an allowlisted AST walker rather than arbitrary Go execution.
+Charts, function plots, and tables have output-shape limits because they can multiply rendered DOM/SVG work even when their source expressions are small. A semantic `plot` fence may render at most four curves, and each curve is sampled at 32–1,024 points. `samples` is a bounded integer literal after optional interpolation; bare document identifiers are not resolved in that field. Each plot/range expression is limited to 16 KiB, 512 AST nodes, and 128 nesting levels. Plot expressions and reactive range bounds are numeric-only and evaluated by an allowlisted AST walker rather than arbitrary Go execution.
 
 `md0 open` is deliberately a local viewer, not an internet application server. It refuses non-loopback listen addresses, caps each `/render` request at 1 MiB, and keeps at most 32 isolated browser sessions before evicting the oldest.
 

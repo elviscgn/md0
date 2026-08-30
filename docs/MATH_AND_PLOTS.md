@@ -7,7 +7,7 @@ The feature deliberately has two layers:
 - mathematical notation is a Markdown rendering feature and becomes native MathML;
 - function plots are semantic `plot` fenced blocks and become native SVG.
 
-Both surfaces can use normal md0 interpolation so input changes flow through the existing dependency graph and reactive DOM patching system.
+Both surfaces participate in the existing dependency graph and reactive DOM patching system. Math uses normal md0 interpolation. Plot formulas can refer to numeric document values directly, while retaining interpolation for full md0 expressions.
 
 ## Inline math
 
@@ -93,7 +93,7 @@ Use a fenced block whose info string is `plot` or `md0-plot`:
 ````md
 ```plot
 title = Quadratic family
-y = 0.5 * pow(x, 2) - 2
+quadratic(x) = 0.5 * pow(x, 2) - 2
 x = [-5, 5]
 samples = 320
 ```
@@ -103,7 +103,7 @@ The block produces a native responsive SVG with grid lines, axes when zero lies 
 
 ### Reactive parameters
 
-Use ordinary md0 interpolation for document dependencies:
+Use existing numeric md0 values directly:
 
 ````md
 A: @input a number = 1
@@ -112,13 +112,21 @@ C: @input c number = -4
 
 ```plot
 title = Quadratic explorer
-y = {{ a }} * pow(x, 2) + {{ b }} * x + {{ c }}
+quadratic(x) = a * pow(x, 2) + b * x + c
 x = [-8, 8]
 samples = 360
 ```
 ````
 
-The `{{ a }}`, `{{ b }}`, and `{{ c }}` expressions are tracked by the same dependency graph used for reactive prose. Ordinary fenced code continues to keep interpolation literal; only semantic plot fences opt into interpolation.
+The plot AST collector registers `a`, `b`, and `c` as dependencies before evaluation. Changing any of them invalidates and patches the Markdown region containing the graph. Range bounds may use numeric document values in the same way, for example `x = [-domain, domain]`.
+
+Use `{{ expression }}` when the value needs a full md0 expression rather than a single identifier:
+
+```text
+f(x) = {{ amplitude * 2 }} * sin(x)
+```
+
+Ordinary fenced code keeps interpolation literal. Only semantic plot fences opt into plot parsing and interpolation.
 
 ### Multiple curves
 
@@ -127,30 +135,30 @@ Up to four curves may share one coordinate plane:
 ````md
 ```plot
 title = Supply and demand
-y = 100 - 1.2 * x
-label = demand
-y2 = 20 + 0.8 * x
-label2 = supply
+demand(x) = 100 - 1.2 * x
+supply(x) = 20 + 0.8 * x
 x = [0, 70]
 ```
 ````
 
-Use `y`, `y2`, `y3`, and `y4`. Optional labels use `label`, `label2`, `label3`, and `label4`.
+Each `name(x) = expression` declaration adds a curve in source order, and its name becomes the legend label. The declaration does not create a callable user-defined function. Curve names use the same identifier shape as md0 values, must be unique, and cannot collide with local names, numerical functions, or configuration keys.
+
+Existing documents may continue to use `y`, `y2`, `y3`, and `y4` with optional `label`, `label2`, `label3`, and `label4`. A single fence must use either named curves or legacy curves, not both.
 
 ### Plot configuration
 
-`y` is required. Other keys are optional.
+At least one named curve or legacy `y` curve is required. Other configuration keys are optional.
 
 | Key | Meaning | Default |
 |---|---|---|
 | `title` | human-readable plot title | none |
-| `y` | first function of `x` | required |
-| `y2`–`y4` | additional functions | none |
-| `label`–`label4` | curve legend labels | expression text |
-| `x` | visible domain `[min, max]` | `[-10, 10]` |
+| `name(x)` | preferred named curve declaration | at least one curve required |
+| `y`, `y2`–`y4` | legacy curve declarations | at least one curve required |
+| `label`, `label2`–`label4` | legacy curve legend labels | expression text |
+| `x` | visible numeric domain `[min, max]`; may use document values | `[-10, 10]` |
 | `samples` | samples per curve | `320` |
 
-`samples` must be an integer from 32 through 1024.
+`samples` must be an integer from 32 through 1024. It may be produced with `{{ expression }}`, but unlike curve/range expressions it does not resolve a bare document identifier.
 
 ## Plot expression surface
 
@@ -163,6 +171,7 @@ numeric literals
 x
 pi
 e
+numeric md0 document values
 parentheses
 ```
 
@@ -197,27 +206,27 @@ exp(-pow(x, 2))
 log(x)
 ```
 
-Domain errors such as `sqrt` of a negative value or division by zero create gaps in the sampled curve instead of giving the document extra authority.
+`x` is local to curve expressions and cannot be used in range bounds. `pi`, `e`, and all allowlisted function names are reserved; they cannot be shadowed by document values or curve names. Domain errors such as `sqrt` of a negative value or division by zero create gaps in the sampled curve instead of giving the document extra authority.
 
-## Why interpolation is explicit in plots
+## Why direct values remain explicit dependencies
 
-Plot formulas use `{{ value }}` for md0 document parameters rather than silently resolving arbitrary names from the document environment:
+The preferred authoring form reads like ordinary mathematics:
 
 ```text
-y = {{ amplitude }} * sin({{ frequency }} * x)
+wave(x) = amplitude * sin(frequency * x + phase)
 ```
 
-This keeps dependencies visible in the source, reuses the existing interpolation graph, and gives the plot evaluator a tiny local namespace: `x`, `pi`, `e`, numeric functions, and interpolated numeric constants.
+This is not ambient environment lookup. Before evaluation, md0 parses each plot expression, distinguishes local/reserved names from external identifiers, and adds every external identifier to the Markdown dependency node. Unknown values fail graph construction. Known values must be numeric and finite.
 
-If a bare unknown name remains, plotting fails closed with guidance to use interpolation.
+At render time the evaluator receives only the registered plot values, not the full document environment. Interpolated strings therefore cannot smuggle in a hidden dependency. Interpolation remains useful for inserting the evaluated result of an explicit md0 expression before the same bounded plot parser runs.
 
 ## Security properties
 
-The plot evaluator accepts only numeric AST nodes and named functions from its allowlist. It rejects selectors, method calls, indexing, composite literals, strings, arbitrary identifiers, and every other Go AST form not explicitly handled.
+The plot evaluator accepts only numeric AST nodes, registered numeric document values, and named functions from its allowlist. It rejects selectors, method calls, indexing, composite literals, strings, unknown/non-numeric identifiers, variadic call syntax, and every other Go AST form not explicitly handled.
 
 For example, `os.Exit(x)` is parsed as syntax but rejected because selector calls are not an allowed plot expression. Nothing is executed.
 
-Plots have explicit CPU/output bounds: at most four curves and at most 1024 samples per curve, within md0's existing bounded document and rendered-output limits.
+Plots have explicit CPU/output bounds: at most four curves, at most 1024 samples per curve, and at most 16 KiB / 512 AST nodes / 128 nesting levels per curve or range expression, within md0's existing bounded document and rendered-output limits.
 
 ## Static output
 

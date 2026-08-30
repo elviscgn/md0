@@ -73,11 +73,21 @@ func renderNodeRegion(b *strings.Builder, n Node, r *EvalResult) error {
 
 	switch x := n.(type) {
 	case MarkdownNode:
+		plotDeps, err := markdownPlotDependencies(x.Text)
+		if err != nil {
+			return fmt.Errorf("line %d: plot dependency: %w", x.Line, err)
+		}
+		plotValues := make(map[string]Value, len(plotDeps))
+		for _, name := range plotDeps {
+			if value, ok := r.Env[name]; ok {
+				plotValues[name] = value
+			}
+		}
 		text, err := interpolateMarkdown(x.Text, r.Env)
 		if err != nil {
 			return fmt.Errorf("line %d: interpolation: %w", x.Line, err)
 		}
-		b.WriteString(renderMarkdown(text))
+		b.WriteString(renderMarkdownWithPlotValues(text, plotValues))
 	case InputNode:
 		v, ok := r.Env[x.Name]
 		if !ok {

@@ -136,8 +136,10 @@ var terminalChartCompletions = []editorCompletion{
 
 var terminalPlotCompletions = []editorCompletion{
 	{label: "title", insert: "title = ", detail: "visible plot title"},
-	{label: "y", insert: "y = sin(x)", detail: "first curve"},
-	{label: "y2", insert: "y2 = cos(x)", detail: "second curve"},
+	{label: "f(x)", insert: "f(x) = sin(x)", detail: "named curve"},
+	{label: "g(x)", insert: "g(x) = cos(x)", detail: "additional named curve"},
+	{label: "y", insert: "y = sin(x)", detail: "legacy first curve"},
+	{label: "y2", insert: "y2 = cos(x)", detail: "legacy second curve"},
 	{label: "label", insert: "label = ", detail: "first curve label"},
 	{label: "x", insert: "x = [-10, 10]", detail: "horizontal domain"},
 	{label: "samples", insert: "samples = 320", detail: "32 through 1024"},
@@ -492,6 +494,7 @@ func (e *terminalEditor) completions(force bool) ([]editorCompletion, int) {
 	case "plot":
 		items := append([]editorCompletion(nil), terminalPlotCompletions...)
 		items = append(items, functionCompletions(terminalPlotBuiltins, "plot function")...)
+		items = append(items, e.symbolCompletions()...)
 		return filterCompletions(items, query), wordStart
 	case "table":
 		return filterCompletions(terminalTableCompletions, query), wordStart

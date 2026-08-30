@@ -46,11 +46,11 @@ func TestEditorUXPlotFenceCompletionCreatesUsefulScaffold(t *testing.T) {
 		t.Fatalf("completion=%+v", editor.completion)
 	}
 	editor.acceptCompletionUX()
-	want := "```plot\ny = sin(x)\nx = [-2*pi, 2*pi]\n```"
+	want := "```plot\nf(x) = sin(x)\nx = [-2*pi, 2*pi]\n```"
 	if got := editor.source(); got != want {
 		t.Fatalf("source=%q, want %q", got, want)
 	}
-	if editor.cursorY != 1 || editor.cursorX != len([]rune("y = ")) {
+	if editor.cursorY != 1 || editor.cursorX != len([]rune("f(x) = ")) {
 		t.Fatalf("cursor=(%d,%d)", editor.cursorY, editor.cursorX)
 	}
 }
@@ -64,8 +64,18 @@ func TestEditorUXBlankPlotLineDoesNotOpenAutomaticMenu(t *testing.T) {
 		t.Fatalf("automatic blank-plot completions=%+v", items)
 	}
 	items, _ = editor.completionsUX(true)
-	if len(items) == 0 {
-		t.Fatal("Ctrl+Space should expose plot completions")
+	if !completionLabelsContain(items, "f(x)") {
+		t.Fatalf("Ctrl+Space should expose named plot completions: %+v", items)
+	}
+}
+
+func TestEditorUXPlotCompletionSuggestsDocumentValues(t *testing.T) {
+	editor := testTerminalEditorUX(t, "Amplitude: @input amplitude number = 2\n\n```plot\nf(x) = amp\n```")
+	editor.cursorY = 3
+	editor.cursorX = len(editor.lines[3])
+	items, _ := editor.completionsUX(false)
+	if !completionLabelsContain(items, "amplitude") {
+		t.Fatalf("plot completions did not include document values: %+v", items)
 	}
 }
 

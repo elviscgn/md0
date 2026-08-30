@@ -72,8 +72,10 @@ const md0ChartCompletions=[
 ];
 const md0PlotCompletions=[
  {label:'title',kind:'plot',detail:'visible plot title',insert:'title = Plot title',select:'Plot title'},
- {label:'y',kind:'plot',detail:'first curve',insert:'y = sin(x)',select:'sin(x)'},
- {label:'y2',kind:'plot',detail:'second curve',insert:'y2 = cos(x)',select:'cos(x)'},
+ {label:'f(x)',kind:'curve',detail:'named curve',insert:'f(x) = sin(x)',select:'sin(x)'},
+ {label:'g(x)',kind:'curve',detail:'additional named curve',insert:'g(x) = cos(x)',select:'cos(x)'},
+ {label:'y',kind:'plot',detail:'legacy first curve',insert:'y = sin(x)',select:'sin(x)'},
+ {label:'y2',kind:'plot',detail:'legacy second curve',insert:'y2 = cos(x)',select:'cos(x)'},
  {label:'label',kind:'plot',detail:'first curve label',insert:'label = Series'},
  {label:'x',kind:'plot',detail:'horizontal domain',insert:'x = [-10, 10]'},
  {label:'samples',kind:'plot',detail:'32 to 1024',insert:'samples = 320'}
@@ -118,7 +120,7 @@ function md0HighlightSource(source){
   const trimmed=line.trimStart();
   if(trimmed.startsWith(md0Fence)){const info=trimmed.slice(3).trim().toLowerCase();if(fence)fence='';else fence=info==='plot'||info==='md0-plot'?'plot':'code';return '<span class="tok-fence">'+md0Escape(line)+'</span>'}
   if(fence==='code')return '<span class="tok-code">'+md0Escape(line)+'</span>';
-  if(fence==='plot'){const field=line.match(/^(\s*)(title|y[2-4]?|label[2-4]?|x|samples)(\s*=\s*)(.*)$/);if(field)return md0Escape(field[1])+'<span class="tok-key">'+field[2]+'</span><span class="tok-operator">'+md0Escape(field[3])+'</span>'+md0ExpressionHTML(field[4],field[2]!=='title'&&!field[2].startsWith('label'));return md0ExpressionHTML(line,true)}
+  if(fence==='plot'){const field=line.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*\s*\(\s*x\s*\)|title|y[2-4]?|label[2-4]?|x|samples)(\s*=\s*)(.*)$/);if(field)return md0Escape(field[1])+'<span class="tok-key">'+field[2]+'</span><span class="tok-operator">'+md0Escape(field[3])+'</span>'+md0ExpressionHTML(field[4],field[2]!=='title'&&!field[2].startsWith('label'));return md0ExpressionHTML(line,true)}
   const version=line.match(/^(\s*)(md0)(\s*:\s*)(0\.1)(\s*)$/);if(version)return md0Escape(version[1])+'<span class="tok-version">'+version[2]+md0Escape(version[3])+version[4]+'</span>'+md0Escape(version[5]);
   const heading=line.match(/^(\s*)(#{1,6})(\s+)(.*)$/);if(heading)return md0Escape(heading[1])+'<span class="tok-mark">'+heading[2]+'</span>'+md0Escape(heading[3])+'<span class="tok-heading">'+md0InlineHTML(heading[4])+'</span>';
   const directive=line.match(/^(.*?)(@(input|data|calc|show|when|assert|table|chart|end))\b(.*)$/);if(directive){if(directive[3]==='table'||directive[3]==='chart')block=directive[3];else if(directive[3]==='end')block='';return md0InlineHTML(directive[1])+'<span class="tok-directive">'+directive[2]+'</span>'+md0ExpressionHTML(directive[4])}
@@ -141,7 +143,7 @@ function md0EditorCompletionContext(force=false){
  const inputType=line.match(/@input\s+[A-Za-z_][A-Za-z0-9_]*\s+([A-Za-z]*)$/);if(inputType)return {items:md0InputTypeCompletions,start:end-inputType[1].length,end,query:inputType[1].toLowerCase()};
  const dataFormat=line.match(/@data\s+[A-Za-z_][A-Za-z0-9_]*\s+([A-Za-z]*)$/);if(dataFormat)return {items:md0DataFormatCompletions,start:end-dataFormat[1].length,end,query:dataFormat[1].toLowerCase()};
  const block=md0EditorBlockAt(end);const word=line.match(/[A-Za-z_][A-Za-z0-9_]*$/);const start=word?end-word[0].length:end;const query=word?word[0].toLowerCase():'';
- if(block==='plot')return {items:[...md0PlotCompletions,...[...md0PlotBuiltins].sort().map(label=>({label,kind:'function',detail:'plot function',insert:label+'()',cursor:-1}))],start,end,query};
+ if(block==='plot')return {items:[...md0PlotCompletions,...md0EditorSymbols(),...[...md0PlotBuiltins].sort().map(label=>({label,kind:'function',detail:'plot function',insert:label+'()',cursor:-1}))],start,end,query};
  if(block==='table')return {items:md0TableCompletions,start,end,query};
  if(block==='chart')return {items:md0ChartCompletions,start,end,query};
  const openInterpolation=before.lastIndexOf('{{')>before.lastIndexOf('}}');const expressionLine=/@(calc|show|when|assert)\b/.test(line)||(/@input\b/.test(line)&&line.includes('='));

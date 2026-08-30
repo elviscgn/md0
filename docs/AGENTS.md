@@ -51,9 +51,9 @@ For core AST nodes, use `ExprDependencies` and add the dependency node in `Build
 
 For Markdown rendering, use normal `{{ expression }}` interpolation. Ordinary code spans and ordinary code fences intentionally suppress interpolation.
 
-`plot` fences are semantic and intentionally allow `{{ expression }}` so plotted parameters are explicit graph dependencies.
+`plot` fences are semantic. In addition to `{{ expression }}`, their bounded numeric AST collector registers bare document identifiers in curve expressions and range bounds. The renderer must receive only that registered value subset, never the complete environment.
 
-Never hide document-variable lookup inside a renderer without also making that dependency visible to invalidation.
+Never hide document-variable lookup inside a renderer without also making that dependency visible to invalidation. In particular, do not allow interpolated plot text to introduce an identifier that was absent during dependency discovery.
 
 ## Rendering rules
 
@@ -74,7 +74,7 @@ Math notation is a bounded LaTeX-like renderer, not TeX. Do not add macros, pack
 
 Plot expressions are parsed with Go's standard-library parser but are never compiled or executed as Go. Only AST node kinds explicitly handled by the numeric evaluator are allowed.
 
-Keep plot limits bounded. Current limits are at most four curves and 32–1024 samples per curve.
+Keep plot limits bounded. Current limits are at most four curves, 32–1024 samples per curve, and 16 KiB / 512 AST nodes / 128 levels per numeric expression.
 
 If adding a plot function, add explicit evaluator handling and tests for its domain/non-finite behavior.
 

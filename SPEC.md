@@ -44,7 +44,7 @@ The declaration grants no file access. The host must bind each declaration expli
 @show total
 ```
 
-`@calc` defines a value. `@show` renders an evaluated value in a code-styled block. `{{ expression }}` interpolates a value into Markdown prose, except inside code spans and ordinary fenced code blocks. Semantic `plot` fences are the one fenced rendering extension that intentionally participates in interpolation so plotted parameters are visible to the dependency graph.
+`@calc` defines a value. `@show` renders an evaluated value in a code-styled block. `{{ expression }}` interpolates a value into Markdown prose, except inside code spans and ordinary fenced code blocks. Semantic `plot` fences are the one fenced rendering extension that participates in the dependency graph: they support interpolation and also register bare numeric document values used by plot expressions.
 
 ### Condition
 
@@ -120,19 +120,21 @@ $$
 A fenced block with info string `plot` or `md0-plot` renders a bounded native SVG function plot:
 
 ````md
+Scale: @input scale number = 0.5
+
 ```plot
 title = Quadratic family
-y = 0.5 * pow(x, 2) - 2
+quadratic(x) = scale * pow(x, 2) - 2
 x = [-5, 5]
 samples = 320
 ```
 ````
 
-Plot fences may use `{{ expression }}` to bind normal md0 values into formulas. After interpolation, the plot evaluator has only a local numeric namespace: `x`, constants `pi` and `e`, arithmetic, parentheses, and an explicit allowlist of numerical functions. Exponentiation uses `pow(base, exponent)` in plot formulas.
+Named curves use `name(x) = expression`; the function name becomes the legend label. Bare identifiers in curve expressions and range bounds resolve only to existing numeric md0 values and are registered as reactive dependencies before evaluation. `x`, constants `pi`/`e`, and the numerical function names are reserved. Plot fences may still use `{{ expression }}` when a full md0 expression rather than a single value is needed. Exponentiation uses `pow(base, exponent)` in plot formulas.
 
 Current numerical plot functions are `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sqrt`, `abs`, `exp`, `log`, `ln`, `log10`, `floor`, `ceil`, `round`, `pow`, `min`, and `max`.
 
-A plot may contain at most four curves (`y`, `y2`, `y3`, `y4`) and 32–1,024 samples per curve. The evaluator parses syntax but does not execute Go code; selectors, methods, arbitrary identifiers, strings, indexing, composite literals, and unrecognized expression forms fail closed. See [`docs/MATH_AND_PLOTS.md`](docs/MATH_AND_PLOTS.md) for the practical plotting reference.
+A plot may contain at most four named curves. The legacy `y`, `y2`, `y3`, `y4` and label keys remain supported, but named and legacy curve forms cannot be mixed in one fence. Each curve uses 32–1,024 samples. The evaluator parses syntax but does not execute Go code; selectors, methods, unknown identifiers, non-numeric document values, strings, indexing, composite literals, and unrecognized expression forms fail closed. `samples` remains a bounded integer literal after optional interpolation. See [`docs/MATH_AND_PLOTS.md`](docs/MATH_AND_PLOTS.md) for the practical plotting reference.
 
 ## Values and expressions
 

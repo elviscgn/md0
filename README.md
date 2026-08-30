@@ -130,7 +130,7 @@ md0 open --data assumptions=examples/data/scenario-assumptions.json examples/sce
 - dependency-ordered computation while preserving document render order
 - incremental invalidation and fine-grained DOM patches
 - typed inputs, calculations, conditions, assertions, tables, and bar charts
-- native MathML rendering and bounded reactive SVG function plots
+- native MathML rendering and bounded reactive SVG plots with named curves and graph-tracked document values
 - persistent zero-dependency terminal document app with syntax-aware source editing
 - durable values/snapshots, live source reload, and explicit CSV/JSON attachments
 - compiler-style source diagnostics

@@ -78,9 +78,9 @@ Key behavior:
 - arrows, Home/End, Page Up/Down, Backspace/Delete, Enter, and Tab edit the buffer;
 - typing relevant md0 syntax opens a compact cursor-local completion popup without shrinking the document viewport;
 - the selected completion can show a dim inline ghost continuation;
-- `Ctrl+Space` explicitly opens broader suggestions for directives, input/data types, symbols, expressions, table/chart fields, and plot functions;
+- `Ctrl+Space` explicitly opens broader suggestions for directives, input/data types, symbols, expressions, table/chart fields, named curves, and plot functions;
 - `Up`/`Down` selects a suggestion and `Enter`/`Tab` inserts it;
-- block completions can scaffold `@when`, `@assert`, `@table`, `@chart`, and fenced `plot` structures.
+- block completions can scaffold `@when`, `@assert`, `@table`, `@chart`, and fenced `plot` structures using the preferred `f(x) = expression` syntax. Document values are suggested directly inside plot formulas.
 
 Undo history is bounded to 128 snapshots and a bounded memory budget rather than growing without limit. Consecutive ordinary typing is coalesced into an undo group instead of creating one history entry per character.
 
