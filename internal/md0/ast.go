@@ -1,8 +1,9 @@
 package md0
 
 type Document struct {
-	Path  string
-	Nodes []Node
+	Path   string
+	Source string
+	Nodes  []Node
 }
 
 type Node interface {

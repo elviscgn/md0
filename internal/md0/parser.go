@@ -154,7 +154,11 @@ func ParseFile(path string) (*Document, error) {
 	if idx != len(lines) {
 		return nil, fmt.Errorf("%s: parser stopped early at line %d", path, lines[idx].no)
 	}
-	return &Document{Path: path, Nodes: nodes}, nil
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return &Document{Path: path, Source: string(data), Nodes: nodes}, nil
 }
 
 func ParseString(name, src string) (*Document, error) {
@@ -176,7 +180,7 @@ func ParseString(name, src string) (*Document, error) {
 	if idx != len(lines) {
 		return nil, fmt.Errorf("%s: parser stopped early", name)
 	}
-	return &Document{Path: name, Nodes: nodes}, nil
+	return &Document{Path: name, Source: src, Nodes: nodes}, nil
 }
 
 func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Node, int, error) {

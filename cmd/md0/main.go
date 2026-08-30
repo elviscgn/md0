@@ -8,8 +8,6 @@ import (
 	core "github.com/elviscgn/md0/internal/md0"
 )
 
-const version = "v0.1.0"
-
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -27,7 +25,7 @@ func main() {
 	case "inspect":
 		cmdInspect(os.Args[2:])
 	case "version", "--version", "-v":
-		fmt.Println("md0", version)
+		fmt.Println("md0", core.RuntimeVersion)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
 		usage()
@@ -39,12 +37,23 @@ func usage() {
 	fmt.Fprint(os.Stderr, `md0 — safe computational Markdown
 
 Usage:
-  md0 validate FILE
-  md0 eval FILE
-  md0 render [-o FILE] FILE
-  md0 open [-addr 127.0.0.1:8080] FILE
+  md0 validate [--values FILE] FILE
+  md0 eval [--values FILE] FILE
+  md0 render [-o FILE] [--values FILE] [--snapshot FILE] FILE
+  md0 open [-addr 127.0.0.1:8080] [--values FILE] FILE
   md0 inspect FILE
 `)
+}
+
+func loadValues(path string) map[string]string {
+	if path == "" {
+		return nil
+	}
+	values, err := core.LoadValuesFile(path)
+	if err != nil {
+		die(err)
+	}
+	return values
 }
 
 func oneFile(name string, args []string) *core.Document {
@@ -60,8 +69,11 @@ func oneFile(name string, args []string) *core.Document {
 }
 
 func cmdValidate(args []string) {
-	doc := oneFile("validate", args)
-	r, err := core.Evaluate(doc, nil)
+	fs := flag.NewFlagSet("validate", flag.ExitOnError)
+	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
+	fs.Parse(args)
+	doc := oneFile("validate", fs.Args())
+	r, err := core.Evaluate(doc, loadValues(*valuesPath))
 	if err != nil {
 		dieDoc(doc, err)
 	}
@@ -83,8 +95,11 @@ func cmdValidate(args []string) {
 }
 
 func cmdEval(args []string) {
-	doc := oneFile("eval", args)
-	r, err := core.Evaluate(doc, nil)
+	fs := flag.NewFlagSet("eval", flag.ExitOnError)
+	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
+	fs.Parse(args)
+	doc := oneFile("eval", fs.Args())
+	r, err := core.Evaluate(doc, loadValues(*valuesPath))
 	if err != nil {
 		dieDoc(doc, err)
 	}
@@ -106,9 +121,11 @@ func cmdEval(args []string) {
 func cmdRender(args []string) {
 	fs := flag.NewFlagSet("render", flag.ExitOnError)
 	out := fs.String("o", "", "output HTML file (default stdout)")
+	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
+	snapshotPath := fs.String("snapshot", "", "write durable snapshot JSON")
 	fs.Parse(args)
 	doc := oneFile("render", fs.Args())
-	r, err := core.Evaluate(doc, nil)
+	r, err := core.Evaluate(doc, loadValues(*valuesPath))
 	if err != nil {
 		dieDoc(doc, err)
 	}
@@ -117,25 +134,42 @@ func cmdRender(args []string) {
 		dieDoc(doc, err)
 	}
 	page := core.RenderStaticPage(doc.Path, frag)
+	if *snapshotPath != "" {
+		data, err := core.MarshalSnapshot(doc, r)
+		if err != nil {
+			dieDoc(doc, err)
+		}
+		if err := os.WriteFile(*snapshotPath, data, 0644); err != nil {
+			die(err)
+		}
+	}
 	if *out == "" {
 		fmt.Print(page)
+		if *snapshotPath != "" {
+			fmt.Fprintf(os.Stderr, "wrote %s\n", *snapshotPath)
+		}
 		return
 	}
 	if err := os.WriteFile(*out, []byte(page), 0644); err != nil {
 		die(err)
 	}
 	fmt.Printf("wrote %s\n", *out)
+	if *snapshotPath != "" {
+		fmt.Printf("wrote %s\n", *snapshotPath)
+	}
 }
 
 func cmdOpen(args []string) {
 	fs := flag.NewFlagSet("open", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8080", "loopback listen address")
+	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
 	fs.Parse(args)
 	doc := oneFile("open", fs.Args())
-	if _, err := core.Evaluate(doc, nil); err != nil {
+	values := loadValues(*valuesPath)
+	if _, err := core.Evaluate(doc, values); err != nil {
 		dieDoc(doc, err)
 	}
-	if err := core.Serve(doc, *addr); err != nil {
+	if err := core.ServeWithValues(doc, *addr, values); err != nil {
 		die(err)
 	}
 }

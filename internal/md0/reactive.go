@@ -20,11 +20,15 @@ type ReactiveSession struct {
 }
 
 func NewReactiveSession(doc *Document) (*ReactiveSession, error) {
+	return NewReactiveSessionWithValues(doc, nil)
+}
+
+func NewReactiveSessionWithValues(doc *Document, overrides map[string]string) (*ReactiveSession, error) {
 	plan, err := BuildEvaluationPlan(doc)
 	if err != nil {
 		return nil, err
 	}
-	result, err := evaluateWithPlan(doc, plan, nil)
+	result, err := evaluateWithPlan(doc, plan, overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -34,6 +38,12 @@ func NewReactiveSession(doc *Document) (*ReactiveSession, error) {
 		result:    result,
 		overrides: renderedInputSnapshot(doc.Nodes, result),
 	}, nil
+}
+
+func (s *ReactiveSession) Values() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return copyStringMap(s.overrides)
 }
 
 func (s *ReactiveSession) Reset() (*EvalResult, error) {

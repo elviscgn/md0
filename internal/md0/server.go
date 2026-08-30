@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,10 +38,11 @@ type patchErrorResponse struct {
 }
 
 type runtimeSessionStore struct {
-	mu       sync.Mutex
-	doc      *Document
-	sessions map[string]*ReactiveSession
-	order    []string
+	mu            sync.Mutex
+	doc           *Document
+	initialValues map[string]string
+	sessions      map[string]*ReactiveSession
+	order         []string
 }
 
 var inputErrorNameRE = regexp.MustCompile(`\binput ([A-Za-z_][A-Za-z0-9_]*):`)
@@ -91,11 +93,16 @@ func newRuntimeToken() (string, error) {
 }
 
 func newRuntimeSessionStore(doc *Document) *runtimeSessionStore {
-	return &runtimeSessionStore{doc: doc, sessions: map[string]*ReactiveSession{}}
+	return newRuntimeSessionStoreWithValues(doc, nil)
+
+}
+
+func newRuntimeSessionStoreWithValues(doc *Document, values map[string]string) *runtimeSessionStore {
+	return &runtimeSessionStore{doc: doc, initialValues: copyStringMap(values), sessions: map[string]*ReactiveSession{}}
 }
 
 func (s *runtimeSessionStore) create() (string, *ReactiveSession, error) {
-	session, err := NewReactiveSession(s.doc)
+	session, err := NewReactiveSessionWithValues(s.doc, s.initialValues)
 	if err != nil {
 		return "", nil, err
 	}
@@ -233,11 +240,15 @@ func newHandler(doc *Document) (http.Handler, error) {
 }
 
 func newHandlerForAddr(doc *Document, addr string) (http.Handler, error) {
+	return newHandlerForAddrWithValues(doc, addr, nil)
+}
+
+func newHandlerForAddrWithValues(doc *Document, addr string, initialValues map[string]string) (http.Handler, error) {
 	port, err := validateLoopbackAddress(addr)
 	if err != nil {
 		return nil, err
 	}
-	store := newRuntimeSessionStore(doc)
+	store := newRuntimeSessionStoreWithValues(doc, initialValues)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -297,6 +308,38 @@ func newHandlerForAddr(doc *Document, addr string) (http.Handler, error) {
 			return
 		}
 	})
+	mux.HandleFunc("POST /snapshot", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		session, ok := store.get(r.Header.Get("X-MD0-Token"))
+		if !ok {
+			writePatchError(w, http.StatusForbidden, "invalid or expired runtime token", "")
+			return
+		}
+		data, err := MarshalSnapshot(doc, session.Snapshot())
+		if err != nil {
+			writePatchError(w, http.StatusInternalServerError, err.Error(), "")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, snapshotFilename(doc.Path)))
+		_, _ = w.Write(data)
+	})
+	mux.HandleFunc("POST /markdown", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		session, ok := store.get(r.Header.Get("X-MD0-Token"))
+		if !ok {
+			writePatchError(w, http.StatusForbidden, "invalid or expired runtime token", "")
+			return
+		}
+		source, err := UpdatedMarkdown(doc, session.Snapshot())
+		if err != nil {
+			writePatchError(w, http.StatusInternalServerError, err.Error(), "")
+			return
+		}
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, filepath.Base(doc.Path)))
+		_, _ = io.WriteString(w, source)
+	})
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setRuntimeSecurityHeaders(w)
@@ -317,10 +360,14 @@ func newHandlerForAddr(doc *Document, addr string) (http.Handler, error) {
 }
 
 func Serve(doc *Document, addr string) error {
+	return ServeWithValues(doc, addr, nil)
+}
+
+func ServeWithValues(doc *Document, addr string, initialValues map[string]string) error {
 	if _, err := validateLoopbackAddress(addr); err != nil {
 		return err
 	}
-	handler, err := newHandlerForAddr(doc, addr)
+	handler, err := newHandlerForAddrWithValues(doc, addr, initialValues)
 	if err != nil {
 		return err
 	}
@@ -335,4 +382,14 @@ func Serve(doc *Document, addr string) error {
 		MaxHeaderBytes:    1 << 20,
 	}
 	return server.ListenAndServe()
+}
+
+func snapshotFilename(path string) string {
+	name := filepath.Base(path)
+	ext := filepath.Ext(name)
+	name = strings.TrimSuffix(name, ext)
+	if name == "" || name == "." {
+		name = "document"
+	}
+	return name + ".snapshot.json"
 }
