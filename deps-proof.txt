@@ -1,4 +1,9 @@
 $ go list -m all
 github.com/elviscgn/md0
 
-No third-party modules are present.
+$ go list -deps -f '{{with .Module}}{{if not .Main}}{{.Path}} {{.Version}}{{end}}{{end}}' ./... | sort -u
+<no output>
+
+No third-party modules are present in the module build list or in the module ownership of any package in md0's dependency closure.
+
+Note: raw `go list -deps ./...` output can include paths such as `vendor/golang.org/x/crypto/...`. These are packages bundled inside Go's GOROOT for standard-library implementation and are not dependencies vendored by md0.
