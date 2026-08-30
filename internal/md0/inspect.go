@@ -46,9 +46,74 @@ func Inspect(doc *Document) string {
 			fmt.Fprintf(&b, "  %s\n", edge)
 		}
 		b.WriteByte('\n')
+
+		renderEvaluationPlan(&b, doc, graph)
 	}
 
 	b.WriteString("Document authority\n")
 	b.WriteString("  Filesystem        no\n  Network           no\n  Shell/processes   no\n  Environment       no\n  Package imports   no\n  Native code       no\n  Dynamic eval      no\n")
 	return b.String()
+}
+
+func renderEvaluationPlan(b *strings.Builder, doc *Document, graph *DependencyGraph) {
+	b.WriteString("Evaluation plan\n")
+	plan, err := BuildEvaluationPlan(doc)
+	if err != nil {
+		fmt.Fprintf(b, "  error             %s\n\n", err)
+		return
+	}
+
+	guarded := 0
+	for _, id := range plan.Order {
+		if len(plan.Guards[id]) > 0 {
+			guarded++
+		}
+	}
+
+	forward := forwardEdgeCount(graph)
+	fmt.Fprintf(b, "  Mode              dependency-first\n")
+	fmt.Fprintf(b, "  Steps             %d\n", len(plan.Order))
+	fmt.Fprintf(b, "  Guarded nodes     %d\n", guarded)
+	fmt.Fprintf(b, "  Forward edges     %d\n", forward)
+	fmt.Fprintf(b, "  Render order      document order\n")
+
+	for i, id := range plan.Order {
+		node := graph.Nodes[id]
+		guard := guardDescription(plan, id, graph)
+		fmt.Fprintf(b, "  %02d  %-28s line %-4d%s\n", i+1, id, node.Line, guard)
+	}
+	b.WriteByte('\n')
+}
+
+func forwardEdgeCount(graph *DependencyGraph) int {
+	count := 0
+	for _, targetID := range graph.Order {
+		target := graph.Nodes[targetID]
+		for _, sourceID := range target.DependsOn {
+			source, ok := graph.Nodes[sourceID]
+			if ok && source.Line > target.Line {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func guardDescription(plan *EvaluationPlan, id string, graph *DependencyGraph) string {
+	guards := plan.Guards[id]
+	if len(guards) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(guards))
+	for _, guardID := range guards {
+		guard, ok := graph.Nodes[guardID]
+		if !ok {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("when@%d", guard.Line))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "  guarded by " + strings.Join(parts, ", ")
 }
