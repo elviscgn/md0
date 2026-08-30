@@ -151,7 +151,7 @@ func (a *documentApp) runEditor() error {
 	}
 	editor := &terminalEditorUX{terminalEditor: newTerminalEditor(a.path, string(data), newTerminalUI(os.Stdout))}
 	for {
-		editor.drawUX()
+		editor.drawPolishedUX("back")
 		event, err := readEditorEvent(a.reader)
 		if err != nil {
 			return err
