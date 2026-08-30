@@ -207,6 +207,28 @@ func TestSecurityRenderEndpointRequiresCapabilityToken(t *testing.T) {
 	}
 }
 
+func TestSecurityExportEndpointsRequireCapabilityToken(t *testing.T) {
+	handler := testRuntimeHandler(t)
+	for _, path := range []string{"/snapshot", "/markdown"} {
+		request := runtimeTestRequest(http.MethodPost, path, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("%s without token status=%d, want 403", path, response.Code)
+		}
+	}
+	token := runtimeTokenForHandler(t, handler)
+	for _, path := range []string{"/snapshot", "/markdown"} {
+		request := runtimeTestRequest(http.MethodPost, path, strings.NewReader("unexpected"))
+		request.Header.Set("X-MD0-Token", token)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s with body status=%d, want 400", path, response.Code)
+		}
+	}
+}
+
 func TestSecurityRuntimeSessionsAreIsolated(t *testing.T) {
 	handler := testRuntimeHandler(t)
 	first := runtimeTokenForHandler(t, handler)

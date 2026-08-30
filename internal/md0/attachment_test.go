@@ -84,7 +84,7 @@ rows = rows(benchmarks)
 	}
 }
 
-func TestDataAttachmentsMustBeExplicitAndDeclared(t *testing.T) {
+func TestSecurityDataAttachmentsMustBeExplicitAndDeclared(t *testing.T) {
 	doc, err := ParseString("data.md", "@data report json\n@show report\n")
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestDataAttachmentsMustBeExplicitAndDeclared(t *testing.T) {
 	}
 }
 
-func TestDataAttachmentShapeLimits(t *testing.T) {
+func TestSecurityDataAttachmentShapeLimits(t *testing.T) {
 	header := make([]string, 65)
 	for i := range header {
 		header[i] = "c" + string(rune('A'+i%26)) + string(rune('a'+i/26))

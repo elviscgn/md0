@@ -52,7 +52,7 @@ func TestLiveHandlerReportsDiagnosticsAndReloadsValidSource(t *testing.T) {
 	}
 }
 
-func TestLiveSourceStatusUsesRuntimeRequestBoundary(t *testing.T) {
+func TestSecurityLiveSourceStatusUsesRuntimeRequestBoundary(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "live.md")
 	if err := os.WriteFile(path, []byte("hello\n"), 0644); err != nil {
 		t.Fatal(err)

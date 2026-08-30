@@ -235,6 +235,15 @@ func decodeRenderInputs(w http.ResponseWriter, r *http.Request) (map[string]stri
 	return values, nil
 }
 
+func requireEmptyRequestBody(w http.ResponseWriter, r *http.Request) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 1)
+	read, err := io.Copy(io.Discard, r.Body)
+	if err != nil || read != 0 {
+		return fmt.Errorf("request body must be empty")
+	}
+	return nil
+}
+
 func newHandler(doc *Document) (http.Handler, error) {
 	return newHandlerForAddr(doc, "127.0.0.1:8080")
 }
@@ -315,6 +324,10 @@ func newHandlerForAddrWithValues(doc *Document, addr string, initialValues map[s
 			writePatchError(w, http.StatusForbidden, "invalid or expired runtime token", "")
 			return
 		}
+		if err := requireEmptyRequestBody(w, r); err != nil {
+			writePatchError(w, http.StatusBadRequest, err.Error(), "")
+			return
+		}
 		data, err := MarshalSnapshot(doc, session.Snapshot())
 		if err != nil {
 			writePatchError(w, http.StatusInternalServerError, err.Error(), "")
@@ -329,6 +342,10 @@ func newHandlerForAddrWithValues(doc *Document, addr string, initialValues map[s
 		session, ok := store.get(r.Header.Get("X-MD0-Token"))
 		if !ok {
 			writePatchError(w, http.StatusForbidden, "invalid or expired runtime token", "")
+			return
+		}
+		if err := requireEmptyRequestBody(w, r); err != nil {
+			writePatchError(w, http.StatusBadRequest, err.Error(), "")
 			return
 		}
 		source, err := UpdatedMarkdown(doc, session.Snapshot())
