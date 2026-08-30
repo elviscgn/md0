@@ -4,9 +4,59 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+const runtimeTestBaseURL = "http://127.0.0.1:8080"
+
+func runtimeTestRequest(method, path string, body *strings.Reader) *http.Request {
+	var req *http.Request
+	if body == nil {
+		req = httptest.NewRequest(method, runtimeTestBaseURL+path, nil)
+	} else {
+		req = httptest.NewRequest(method, runtimeTestBaseURL+path, body)
+	}
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	if method != http.MethodGet && method != http.MethodHead {
+		req.Header.Set("Origin", runtimeTestBaseURL)
+	}
+	return req
+}
+
+func runtimeTokenForHandler(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, runtimeTestRequest(http.MethodGet, "/", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET / status=%d body=%s", res.Code, res.Body.String())
+	}
+	const marker = `<meta name="md0-runtime-token" content="`
+	page := res.Body.String()
+	start := strings.Index(page, marker)
+	if start < 0 {
+		t.Fatalf("runtime page missing capability token: %s", page)
+	}
+	start += len(marker)
+	end := strings.Index(page[start:], `"`)
+	if end < 0 {
+		t.Fatal("runtime capability token was not terminated")
+	}
+	token := page[start : start+end]
+	if len(token) < 32 {
+		t.Fatalf("runtime capability token unexpectedly short: %q", token)
+	}
+	return token
+}
+
+func runtimeJSONRequest(token, body string) *http.Request {
+	req := runtimeTestRequest(http.MethodPost, "/render", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-MD0-Token", token)
+	return req
+}
 
 func TestSecurityMarkdownAndValuesCannotInjectRawHTML(t *testing.T) {
 	src := `# <img src=x onerror=alert(1)>
@@ -77,7 +127,7 @@ func TestSecurityRuntimeHeadersAndRouteBoundary(t *testing.T) {
 	handler := testRuntimeHandler(t)
 
 	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/", nil))
+	handler.ServeHTTP(res, runtimeTestRequest(http.MethodGet, "/", nil))
 	if res.Code != http.StatusOK {
 		t.Fatalf("GET / status=%d body=%s", res.Code, res.Body.String())
 	}
@@ -101,7 +151,7 @@ func TestSecurityRuntimeHeadersAndRouteBoundary(t *testing.T) {
 	}
 
 	missing := httptest.NewRecorder()
-	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/not-a-route", nil))
+	handler.ServeHTTP(missing, runtimeTestRequest(http.MethodGet, "/not-a-route", nil))
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("GET unknown route status=%d, want 404", missing.Code)
 	}
@@ -110,9 +160,119 @@ func TestSecurityRuntimeHeadersAndRouteBoundary(t *testing.T) {
 	}
 }
 
+func TestSecurityRuntimeRejectsHostOriginAndCrossSiteRequests(t *testing.T) {
+	handler := testRuntimeHandler(t)
+	token := runtimeTokenForHandler(t, handler)
+
+	hostileHost := runtimeTestRequest(http.MethodGet, "/", nil)
+	hostileHost.Host = "evil.example:8080"
+	hostRes := httptest.NewRecorder()
+	handler.ServeHTTP(hostRes, hostileHost)
+	if hostRes.Code != http.StatusForbidden {
+		t.Fatalf("host poisoning status=%d, want 403", hostRes.Code)
+	}
+
+	hostileOrigin := runtimeJSONRequest(token, `{"a":"2"}`)
+	hostileOrigin.Header.Set("Origin", "https://evil.example")
+	originRes := httptest.NewRecorder()
+	handler.ServeHTTP(originRes, hostileOrigin)
+	if originRes.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin status=%d, want 403", originRes.Code)
+	}
+
+	crossSite := runtimeTestRequest(http.MethodGet, "/", nil)
+	crossSite.Header.Set("Sec-Fetch-Site", "cross-site")
+	crossSiteRes := httptest.NewRecorder()
+	handler.ServeHTTP(crossSiteRes, crossSite)
+	if crossSiteRes.Code != http.StatusForbidden {
+		t.Fatalf("cross-site status=%d, want 403", crossSiteRes.Code)
+	}
+}
+
+func TestSecurityRenderEndpointRequiresCapabilityToken(t *testing.T) {
+	handler := testRuntimeHandler(t)
+
+	missing := runtimeJSONRequest("", `{"a":"2"}`)
+	missingRes := httptest.NewRecorder()
+	handler.ServeHTTP(missingRes, missing)
+	if missingRes.Code != http.StatusForbidden {
+		t.Fatalf("missing token status=%d, want 403", missingRes.Code)
+	}
+
+	unknown := runtimeJSONRequest(strings.Repeat("A", 43), `{"a":"2"}`)
+	unknownRes := httptest.NewRecorder()
+	handler.ServeHTTP(unknownRes, unknown)
+	if unknownRes.Code != http.StatusForbidden {
+		t.Fatalf("unknown token status=%d, want 403", unknownRes.Code)
+	}
+}
+
+func TestSecurityRuntimeSessionsAreIsolated(t *testing.T) {
+	handler := testRuntimeHandler(t)
+	first := runtimeTokenForHandler(t, handler)
+	second := runtimeTokenForHandler(t, handler)
+	if first == second {
+		t.Fatal("separate page loads must not share a capability token")
+	}
+
+	firstUpdate := httptest.NewRecorder()
+	handler.ServeHTTP(firstUpdate, runtimeJSONRequest(first, `{"a":"4"}`))
+	if firstUpdate.Code != http.StatusOK || firstUpdate.Header().Get("X-MD0-Changed") != "a" {
+		t.Fatalf("first session update status=%d changed=%q", firstUpdate.Code, firstUpdate.Header().Get("X-MD0-Changed"))
+	}
+
+	firstRepeat := httptest.NewRecorder()
+	handler.ServeHTTP(firstRepeat, runtimeJSONRequest(first, `{"a":"4"}`))
+	if firstRepeat.Code != http.StatusOK || firstRepeat.Header().Get("X-MD0-Changed") != "" {
+		t.Fatalf("first session repeat status=%d changed=%q", firstRepeat.Code, firstRepeat.Header().Get("X-MD0-Changed"))
+	}
+
+	secondUpdate := httptest.NewRecorder()
+	handler.ServeHTTP(secondUpdate, runtimeJSONRequest(second, `{"a":"4"}`))
+	if secondUpdate.Code != http.StatusOK || secondUpdate.Header().Get("X-MD0-Changed") != "a" {
+		t.Fatalf("second session inherited first session state: status=%d changed=%q", secondUpdate.Code, secondUpdate.Header().Get("X-MD0-Changed"))
+	}
+}
+
+func TestSecurityRuntimeSessionStoreIsBounded(t *testing.T) {
+	doc, err := ParseString("bounded.md", `A: @input a number = 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newRuntimeSessionStore(doc)
+	tokens := make([]string, 0, maxRuntimeSessions+1)
+	for i := 0; i < maxRuntimeSessions+1; i++ {
+		token, _, err := store.create()
+		if err != nil {
+			t.Fatal(err)
+		}
+		tokens = append(tokens, token)
+	}
+	if _, ok := store.get(tokens[0]); ok {
+		t.Fatal("oldest runtime session should be evicted at capacity")
+	}
+	if _, ok := store.get(tokens[len(tokens)-1]); !ok {
+		t.Fatal("newest runtime session should remain available")
+	}
+}
+
+func TestSecurityOpenOnlyAcceptsLoopbackAddresses(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:8080", "localhost:8080", "[::1]:8080"} {
+		if _, err := validateLoopbackAddress(addr); err != nil {
+			t.Fatalf("loopback address %q rejected: %v", addr, err)
+		}
+	}
+	for _, addr := range []string{"0.0.0.0:8080", ":8080", "192.0.2.1:8080"} {
+		if _, err := validateLoopbackAddress(addr); err == nil {
+			t.Fatalf("non-loopback address %q accepted", addr)
+		}
+	}
+}
+
 func TestSecurityRenderEndpointRequiresJSON(t *testing.T) {
 	handler := testRuntimeHandler(t)
-	req := httptest.NewRequest(http.MethodPost, "/render", strings.NewReader(`{"a":"2"}`))
+	token := runtimeTokenForHandler(t, handler)
+	req := runtimeJSONRequest(token, `{"a":"2"}`)
 	req.Header.Set("Content-Type", "text/plain")
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
@@ -123,6 +283,7 @@ func TestSecurityRenderEndpointRequiresJSON(t *testing.T) {
 
 func TestSecurityRenderEndpointRejectsAmbiguousOrOversizedBodies(t *testing.T) {
 	handler := testRuntimeHandler(t)
+	token := runtimeTokenForHandler(t, handler)
 	tests := []struct {
 		name string
 		body string
@@ -133,10 +294,8 @@ func TestSecurityRenderEndpointRejectsAmbiguousOrOversizedBodies(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/render", strings.NewReader(tc.body))
-			req.Header.Set("Content-Type", "application/json")
 			res := httptest.NewRecorder()
-			handler.ServeHTTP(res, req)
+			handler.ServeHTTP(res, runtimeJSONRequest(token, tc.body))
 			if res.Code != http.StatusBadRequest {
 				t.Fatalf("status=%d body=%s, want 400", res.Code, res.Body.String())
 			}
@@ -146,16 +305,15 @@ func TestSecurityRenderEndpointRejectsAmbiguousOrOversizedBodies(t *testing.T) {
 
 func TestSecurityBadRequestDoesNotPoisonReactiveSession(t *testing.T) {
 	handler := testRuntimeHandler(t)
+	token := runtimeTokenForHandler(t, handler)
 
-	bad := httptest.NewRequest(http.MethodPost, "/render", strings.NewReader(`{"a":"2"} {"a":"3"}`))
-	bad.Header.Set("Content-Type", "application/json")
 	badRes := httptest.NewRecorder()
-	handler.ServeHTTP(badRes, bad)
+	handler.ServeHTTP(badRes, runtimeJSONRequest(token, `{"a":"2"} {"a":"3"}`))
 	if badRes.Code != http.StatusBadRequest {
 		t.Fatalf("bad request status=%d", badRes.Code)
 	}
 
-	good := httptest.NewRequest(http.MethodPost, "/render", strings.NewReader(`{"a":"4"}`))
+	good := runtimeJSONRequest(token, `{"a":"4"}`)
 	good.Header.Set("Content-Type", "application/json; charset=utf-8")
 	goodRes := httptest.NewRecorder()
 	handler.ServeHTTP(goodRes, good)
@@ -164,6 +322,21 @@ func TestSecurityBadRequestDoesNotPoisonReactiveSession(t *testing.T) {
 	}
 	if got := goodRes.Header().Get("X-MD0-Changed"); got != "a" {
 		t.Fatalf("changed=%q, want a", got)
+	}
+}
+
+func TestSecurityRejectsInvalidUTF8(t *testing.T) {
+	invalid := string([]byte{'o', 'k', '\n', 0xff, 'x'})
+	if _, err := ParseString("invalid-utf8.md", invalid); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
+		t.Fatalf("ParseString err=%v, want UTF-8 rejection", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "invalid.md")
+	if err := os.WriteFile(path, []byte{'o', 'k', '\n', 0xff, 'x'}, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseFile(path); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
+		t.Fatalf("ParseFile err=%v, want UTF-8 rejection", err)
 	}
 }
 
