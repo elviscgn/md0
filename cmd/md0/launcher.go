@@ -27,7 +27,7 @@ type launcherOption struct {
 }
 
 var launcherOptions = []launcherOption{
-	{key: "e", label: "Edit in terminal", hint: "syntax + completion", action: launcherEdit},
+	{key: "e", label: "Edit document", hint: "full-screen editor", action: launcherEdit},
 	{key: "o", label: "Open live viewer", hint: "watch source changes", action: launcherOpen},
 	{key: "r", label: "Render standalone HTML", hint: "create an offline document", action: launcherRender},
 	{key: "i", label: "Inspect document", hint: "dependencies + authority", action: launcherInspect},
@@ -66,33 +66,8 @@ func launcherAvailable() bool {
 }
 
 func launchDocument(path string) {
-	if _, err := os.Stat(path); err != nil {
+	if err := runDocumentApp(path); err != nil {
 		die(err)
-	}
-	if !launcherAvailable() {
-		cliError("interactive document launcher requires a terminal; use an explicit md0 subcommand")
-		os.Exit(2)
-	}
-
-	action, err := chooseLauncherAction(path)
-	if err != nil {
-		die(err)
-	}
-
-	switch action {
-	case launcherEdit:
-		cmdEdit([]string{path})
-	case launcherOpen:
-		cmdOpen([]string{path})
-	case launcherRender:
-		out := defaultHTMLPath(path)
-		cmdRender([]string{"-o", out, path})
-	case launcherInspect:
-		cmdInspect([]string{path})
-	case launcherValidate:
-		cmdValidate([]string{path})
-	case launcherQuit:
-		return
 	}
 }
 
@@ -201,6 +176,9 @@ func readLauncherKey(reader *bufio.Reader) (launcherKey, error) {
 	case 'q', 'Q':
 		return launcherKeyQuit, nil
 	case 0x1b:
+		if reader.Buffered() == 0 {
+			return launcherKeyQuit, nil
+		}
 		return readLauncherEscape(reader)
 	default:
 		return launcherKeyUnknown, nil
