@@ -101,14 +101,14 @@ func TestPlotSupportsMultipleCurvesAndPow(t *testing.T) {
 }
 
 func TestPlotEscapesTitleAndLabels(t *testing.T) {
-	got := renderPlotFence("title = <script>alert(1)</script>\ny = x\nlabel = <img src=x onerror=alert(1)>\nx = [-1, 1]")
+	got := renderPlotFence("title = <script>alert(1)</script>\ny = x\nlabel = <img src=x onerror=alert(1)>\ny2 = -x\nlabel2 = safe\nx = [-1, 1]")
 	lower := strings.ToLower(got)
-	for _, unsafe := range []string{"<script", "<img", "onerror="} {
+	for _, unsafe := range []string{"<script", "<img"} {
 		if strings.Contains(lower, unsafe) {
 			t.Fatalf("plot emitted unsafe markup %q: %s", unsafe, got)
 		}
 	}
-	if !strings.Contains(got, "&lt;script&gt;") || !strings.Contains(got, "&lt;img") {
+	if !strings.Contains(got, "&lt;script&gt;") || !strings.Contains(got, "&lt;img src=x onerror=alert(1)&gt;") {
 		t.Fatalf("plot title/label were not escaped: %s", got)
 	}
 }
