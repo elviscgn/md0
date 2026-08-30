@@ -20,10 +20,17 @@ func TestInteractiveRuntimePageIncludesViewerPreferences(t *testing.T) {
 		`>System<`,
 		`>Light<`,
 		`>Dark<`,
+		`md0-segmented`,
+		`md0EnhanceInputs`,
+		`md0-stepper`,
+		`Avenir Next`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("interactive runtime page missing viewer preference marker %q", want)
 		}
+	}
+	if strings.Contains(page, "Inter,") || strings.Contains(page, `"Inter"`) {
+		t.Fatal("interactive runtime page unexpectedly includes Inter in its font stack")
 	}
 }
 
