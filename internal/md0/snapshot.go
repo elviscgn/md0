@@ -173,11 +173,15 @@ func UpdatedMarkdown(doc *Document, result *EvalResult) (string, error) {
 				if index < 0 || index >= len(lines) {
 					return fmt.Errorf("line %d: input %s is outside source text", node.Line, node.Name)
 				}
-				equals := strings.LastIndex(lines[index], "=")
-				if equals < 0 {
+				defaultAt := strings.LastIndex(lines[index], node.DefaultSource)
+				if defaultAt < 0 {
+					return fmt.Errorf("line %d: input %s default source no longer matches source text", node.Line, node.Name)
+				}
+				prefix := strings.TrimRight(lines[index][:defaultAt], " \t")
+				if !strings.HasSuffix(prefix, "=") {
 					return fmt.Errorf("line %d: input %s has no default assignment", node.Line, node.Name)
 				}
-				lines[index] = strings.TrimRight(lines[index][:equals+1], " \t") + " " + inputDefaultLiteral(node.Type, value)
+				lines[index] = prefix + " " + inputDefaultLiteral(node.Type, value)
 			case WhenNode:
 				if err := update(node.Nodes); err != nil {
 					return err
