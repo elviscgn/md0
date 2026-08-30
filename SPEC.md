@@ -44,7 +44,7 @@ The declaration grants no file access. The host must bind each declaration expli
 @show total
 ```
 
-`@calc` defines a value. `@show` renders an evaluated value in a code-styled block. `{{ expression }}` interpolates a value into Markdown prose, except inside code spans and fenced code blocks.
+`@calc` defines a value. `@show` renders an evaluated value in a code-styled block. `{{ expression }}` interpolates a value into Markdown prose, except inside code spans and ordinary fenced code blocks. Semantic `plot` fences are the one fenced rendering extension that intentionally participates in interpolation so plotted parameters are visible to the dependency graph.
 
 ### Condition
 
@@ -88,6 +88,51 @@ values = [budget, total]
 ```
 
 Version 0.1 supports bar charts. Labels and values must be non-empty lists of equal length; chart values must be numbers.
+
+## Markdown rendering extensions
+
+Math notation and function plots are bounded rendering extensions layered onto Markdown. They are not new authority-bearing md0 directives and do not expand the document's host capabilities.
+
+### Mathematical notation
+
+Inline mathematical notation uses `$...$` and display notation uses `$$...$$`:
+
+```md
+The relation is $E = mc^2$.
+
+$$
+f(x)=\frac{x^2 + 1}{\sqrt{2}}
+$$
+```
+
+The runtime renders a deliberately bounded LaTeX-like subset to native MathML. Supported structure includes superscripts/subscripts, fractions, square roots, text, common Greek symbols, common mathematical operators, and common function names. The renderer is not TeX: it has no macro system, package loading, file inclusion, shell escape, arbitrary HTML, or external asset loading.
+
+Normal md0 interpolation occurs before math rendering, so values may appear inside notation:
+
+```md
+$$
+f(x)={{ amplitude }}\sin({{ frequency }}x)
+$$
+```
+
+### Function plots
+
+A fenced block with info string `plot` or `md0-plot` renders a bounded native SVG function plot:
+
+````md
+```plot
+title = Quadratic family
+y = 0.5 * pow(x, 2) - 2
+x = [-5, 5]
+samples = 320
+```
+````
+
+Plot fences may use `{{ expression }}` to bind normal md0 values into formulas. After interpolation, the plot evaluator has only a local numeric namespace: `x`, constants `pi` and `e`, arithmetic, parentheses, and an explicit allowlist of numerical functions. Exponentiation uses `pow(base, exponent)` in plot formulas.
+
+Current numerical plot functions are `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sqrt`, `abs`, `exp`, `log`, `ln`, `log10`, `floor`, `ceil`, `round`, `pow`, `min`, and `max`.
+
+A plot may contain at most four curves (`y`, `y2`, `y3`, `y4`) and 32–1,024 samples per curve. The evaluator parses syntax but does not execute Go code; selectors, methods, arbitrary identifiers, strings, indexing, composite literals, and unrecognized expression forms fail closed. See [`docs/MATH_AND_PLOTS.md`](docs/MATH_AND_PLOTS.md) for the practical plotting reference.
 
 ## Values and expressions
 
