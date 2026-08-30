@@ -93,7 +93,7 @@ Use a fenced block whose info string is `plot` or `md0-plot`:
 ````md
 ```plot
 title = Quadratic family
-y = 0.5 * x^2 - 2
+y = 0.5 * pow(x, 2) - 2
 x = [-5, 5]
 samples = 320
 ```
@@ -112,7 +112,7 @@ C: @input c number = -4
 
 ```plot
 title = Quadratic explorer
-y = {{ a }} * x^2 + {{ b }} * x + {{ c }}
+y = {{ a }} * pow(x, 2) + {{ b }} * x + {{ c }}
 x = [-8, 8]
 samples = 360
 ```
@@ -166,14 +166,13 @@ e
 parentheses
 ```
 
-Supported operators:
+Supported arithmetic operators are:
 
 ```text
 + - * / %
-^
 ```
 
-Inside a plot, `^` is intentionally interpreted as exponentiation, so `x^2` means x squared.
+Use `pow(base, exponent)` for exponentiation in plot formulas. Typeset math remains natural LaTeX-like notation, so the displayed equation can use `$x^2$` while the executable plot formula uses `pow(x, 2)`. This keeps formula precedence unambiguous in the current release.
 
 Supported functions:
 
@@ -192,9 +191,9 @@ Examples:
 ```text
 sin(x)
 2 * cos(3 * x)
-x^2 - 4
+pow(x, 2) - 4
 pow(x, 3) - x
-exp(-x^2)
+exp(-pow(x, 2))
 log(x)
 ```
 
