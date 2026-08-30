@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"strings"
@@ -33,15 +34,23 @@ const md0Editor=document.getElementById('md0-editor-source');
 const md0EditorState=document.getElementById('md0-editor-state');
 const md0EditorDiagnostic=document.getElementById('md0-editor-diagnostic');
 const md0EditorSave=document.getElementById('md0-editor-save');
+const md0EditorOverridesKey='md0:editor-overrides';
+let md0EditorOverrides=new Set();
+try{const stored=JSON.parse(sessionStorage.getItem(md0EditorOverridesKey)||'[]');if(Array.isArray(stored))md0EditorOverrides=new Set(stored.filter(value=>typeof value==='string'))}catch{}
 let md0EditorTimer;
 let md0EditorBusy=false;
 let md0EditorQueued=false;
 function md0EditorSetState(text,kind=''){md0EditorState.textContent=text;md0EditorState.className='md0-editor-state '+kind}
 function md0EditorSetDiagnostic(message){md0EditorDiagnostic.textContent=message||'';md0EditorDiagnostic.hidden=!message}
+function md0EditorRememberOverrides(){try{sessionStorage.setItem(md0EditorOverridesKey,JSON.stringify([...md0EditorOverrides]))}catch{}}
+function md0EditorMarkOverride(event){const input=event.target.closest?.('[data-md0-input]');if(!input||!input.name)return;md0EditorOverrides.add(input.name);md0EditorRememberOverrides()}
+function md0EditorInputValues(){const values={};document.querySelectorAll('[data-md0-input]').forEach(el=>{if(!md0EditorOverrides.has(el.name))return;values[el.name]=el.type==='checkbox'?String(el.checked):el.value});return values}
 function md0EditorRequest(){clearTimeout(md0EditorTimer);md0EditorSetState('editing');md0EditorTimer=setTimeout(md0EditorRenderDraft,180)}
-async function md0EditorRenderDraft(){md0EditorQueued=true;if(md0EditorBusy)return;md0EditorBusy=true;try{while(md0EditorQueued){md0EditorQueued=false;let response;try{response=await fetch('/editor/draft',{method:'POST',headers:{'content-type':'application/json','x-md0-editor-token':md0EditorToken},body:JSON.stringify({source:md0Editor.value,values:md0InputValues()})})}catch(err){md0EditorSetState('offline','error');md0EditorSetDiagnostic('md0 editor unavailable: '+err.message);continue}let payload;try{payload=await response.json()}catch{payload={error:'md0 editor returned an invalid response'}}if(!response.ok){md0EditorSetState('invalid','error');md0EditorSetDiagnostic(payload.error||'draft is invalid');continue}const root=document.getElementById('md0-document');root.innerHTML=payload.fragment;md0EnhanceInputs(root);md0EditorSetDiagnostic('');md0EditorSetState('live','ok')}}finally{md0EditorBusy=false}}
+async function md0EditorRenderDraft(){md0EditorQueued=true;if(md0EditorBusy)return;md0EditorBusy=true;try{while(md0EditorQueued){md0EditorQueued=false;let response;try{response=await fetch('/editor/draft',{method:'POST',headers:{'content-type':'application/json','x-md0-editor-token':md0EditorToken},body:JSON.stringify({source:md0Editor.value,values:md0EditorInputValues()})})}catch(err){md0EditorSetState('offline','error');md0EditorSetDiagnostic('md0 editor unavailable: '+err.message);continue}let payload;try{payload=await response.json()}catch{payload={error:'md0 editor returned an invalid response'}}if(!response.ok){md0EditorSetState('invalid','error');md0EditorSetDiagnostic(payload.error||'draft is invalid');continue}const root=document.getElementById('md0-document');root.innerHTML=payload.fragment;md0EnhanceInputs(root);md0EditorSetDiagnostic('');md0EditorSetState('live','ok')}}finally{md0EditorBusy=false}}
 async function md0EditorCommit(){md0EditorSetState('saving');let response;try{response=await fetch('/editor/source',{method:'POST',headers:{'content-type':'text/plain; charset=utf-8','x-md0-editor-token':md0EditorToken},body:md0Editor.value})}catch(err){md0EditorSetState('error','error');md0EditorSetDiagnostic('save failed: '+err.message);return}let payload;try{payload=await response.json()}catch{payload={error:'invalid save response'}}if(!response.ok){md0EditorSetState('error','error');md0EditorSetDiagnostic(payload.error||'save failed');return}try{sessionStorage.setItem('md0:editor-selection',JSON.stringify({start:md0Editor.selectionStart,end:md0Editor.selectionEnd,scroll:md0Editor.scrollTop}))}catch{}md0EditorSetState('saved','ok');setTimeout(()=>location.reload(),90)}
 md0Editor.addEventListener('input',md0EditorRequest);
+document.addEventListener('input',md0EditorMarkOverride);
+document.addEventListener('change',md0EditorMarkOverride);
 md0Editor.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();md0EditorCommit()}});
 md0EditorSave.addEventListener('click',md0EditorCommit);
 try{const saved=JSON.parse(sessionStorage.getItem('md0:editor-selection')||'null');sessionStorage.removeItem('md0:editor-selection');if(saved){md0Editor.selectionStart=saved.start||0;md0Editor.selectionEnd=saved.end||saved.start||0;md0Editor.scrollTop=saved.scroll||0;md0Editor.focus()}}catch{}
@@ -132,7 +141,7 @@ func (h *editorHandler) serveEditorPage(w http.ResponseWriter, r *http.Request) 
 	}
 	if recorder.status >= 400 {
 		w.WriteHeader(recorder.status)
-		_, _ = w.Write(recorder.body.Bytes())
+		_, _ = io.WriteString(w, recorder.body.String())
 		return
 	}
 	source, err := os.ReadFile(h.path)
@@ -156,11 +165,21 @@ func (h *editorHandler) serveEditorPage(w http.ResponseWriter, r *http.Request) 
 
 func (h *editorHandler) serveDraft(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeEditorJSON(w, http.StatusUnsupportedMediaType, editorDraftResponse{Error: "content type must be application/json"})
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxEditorBodyBytes)
 	decoder := json.NewDecoder(r.Body)
 	var request editorDraftRequest
 	if err := decoder.Decode(&request); err != nil {
 		writeEditorJSON(w, http.StatusBadRequest, editorDraftResponse{Error: "invalid editor draft payload"})
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		writeEditorJSON(w, http.StatusBadRequest, editorDraftResponse{Error: "editor draft payload must contain exactly one JSON object"})
 		return
 	}
 	if len(request.Source) > 2*1024*1024 {
@@ -195,6 +214,11 @@ func (h *editorHandler) serveDraft(w http.ResponseWriter, r *http.Request) {
 
 func (h *editorHandler) serveSave(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "text/plain" {
+		writePatchError(w, http.StatusUnsupportedMediaType, "content type must be text/plain", "")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 2*1024*1024+1)
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -231,18 +255,32 @@ func writeEditorJSON(w http.ResponseWriter, status int, value any) {
 // response so authoring mode can add its source pane without duplicating the
 // viewer's runtime/session implementation.
 type responseRecorder struct {
-	header http.Header
-	body   strings.Builder
-	status int
+	header      http.Header
+	body        strings.Builder
+	status      int
+	wroteHeader bool
 }
 
 func newResponseRecorder() *responseRecorder {
 	return &responseRecorder{header: make(http.Header), status: http.StatusOK}
 }
 
-func (r *responseRecorder) Header() http.Header            { return r.header }
-func (r *responseRecorder) WriteHeader(status int)         { r.status = status }
-func (r *responseRecorder) Write(data []byte) (int, error) { return r.body.Write(data) }
+func (r *responseRecorder) Header() http.Header { return r.header }
+
+func (r *responseRecorder) WriteHeader(status int) {
+	if r.wroteHeader {
+		return
+	}
+	r.status = status
+	r.wroteHeader = true
+}
+
+func (r *responseRecorder) Write(data []byte) (int, error) {
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	return r.body.Write(data)
+}
 
 func ServeFileEditorWithOptions(path, addr string, initialValues map[string]string, dataSpecs []string) error {
 	handler, err := newEditorHandler(path, addr, initialValues, dataSpecs)
