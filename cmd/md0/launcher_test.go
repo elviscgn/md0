@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -37,11 +38,12 @@ func TestReadLauncherKey(t *testing.T) {
 
 func TestLauncherViewIsCompactAndMarksSelection(t *testing.T) {
 	u := terminalUI{color: false}
-	view := u.launcherView("examples/math-playground.md", 2, true)
+	path := filepath.Join("examples", "math-playground.md")
+	view := u.launcherView(path, 2, true)
 	for _, want := range []string{
 		"███╗   ███╗  ██████╗    ██████╗",
 		"md0/PURE 0.1",
-		"document  examples/math-playground.md",
+		"document  " + path,
 		"› r  Render standalone HTML",
 		"↑↓ / jk navigate   enter select",
 	} {
