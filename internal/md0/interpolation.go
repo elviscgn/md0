@@ -15,30 +15,48 @@ func writeInterpolationBounded(out *strings.Builder, value string) error {
 	return nil
 }
 
-// transformMarkdownInterpolations visits {{ ... }} expressions only where
-// Markdown treats them as prose. Fenced code, inline code, and escaped opening
-// braces remain literal document text.
+// transformMarkdownInterpolations visits {{ ... }} expressions where md0
+// treats them as reactive prose. Ordinary fenced code, inline code, and escaped
+// opening braces remain literal. A plot fence is intentionally different: its
+// configuration is declarative md0 content, so {{ ... }} values inside it are
+// tracked and interpolated before the bounded plot renderer sees the formula.
 func transformMarkdownInterpolations(text string, replace func(expr, raw string) (string, error)) (string, error) {
 	lines := strings.SplitAfter(text, "\n")
 	var out strings.Builder
 	var fence *markdownFence
+	plotFence := false
 
 	for _, part := range lines {
 		line := strings.TrimSuffix(part, "\n")
 		hasNewline := len(part) > len(line)
 
 		if fence != nil {
-			if err := writeInterpolationBounded(&out, line); err != nil {
-				return "", err
-			}
 			if isFenceClose(line, *fence) {
+				if err := writeInterpolationBounded(&out, line); err != nil {
+					return "", err
+				}
 				fence = nil
+				plotFence = false
+			} else if plotFence {
+				transformed, err := transformInlineInterpolations(line, replace)
+				if err != nil {
+					return "", err
+				}
+				if err := writeInterpolationBounded(&out, transformed); err != nil {
+					return "", err
+				}
+			} else {
+				if err := writeInterpolationBounded(&out, line); err != nil {
+					return "", err
+				}
 			}
-		} else if marker, run, _, ok := fenceMarker(line); ok {
+		} else if marker, run, info, ok := fenceMarker(line); ok {
 			if err := writeInterpolationBounded(&out, line); err != nil {
 				return "", err
 			}
 			fence = &markdownFence{marker: marker, length: run}
+			kind := strings.ToLower(strings.TrimSpace(info))
+			plotFence = kind == "plot" || kind == "md0-plot"
 		} else {
 			transformed, err := transformInlineInterpolations(line, replace)
 			if err != nil {
