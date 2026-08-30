@@ -8,6 +8,8 @@ import (
 	core "github.com/elviscgn/md0/internal/md0"
 )
 
+const version = "v0.1.0"
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -25,13 +27,14 @@ func main() {
 	case "inspect":
 		cmdInspect(os.Args[2:])
 	case "version", "--version", "-v":
-		fmt.Println("md0 dev")
+		fmt.Println("md0", version)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
 		usage()
 		os.Exit(2)
 	}
 }
+
 func usage() {
 	fmt.Fprint(os.Stderr, `md0 — safe computational Markdown
 
@@ -43,6 +46,7 @@ Usage:
   md0 inspect FILE
 `)
 }
+
 func oneFile(name string, args []string) *core.Document {
 	if len(args) != 1 {
 		fmt.Fprintf(os.Stderr, "%s expects exactly one file\n", name)
@@ -54,6 +58,7 @@ func oneFile(name string, args []string) *core.Document {
 	}
 	return doc
 }
+
 func cmdValidate(args []string) {
 	doc := oneFile("validate", args)
 	r, err := core.Evaluate(doc, nil)
@@ -76,6 +81,7 @@ func cmdValidate(args []string) {
 	}
 	fmt.Printf("ok — %s is valid md0/PURE\n", doc.Path)
 }
+
 func cmdEval(args []string) {
 	doc := oneFile("eval", args)
 	r, err := core.Evaluate(doc, nil)
@@ -96,6 +102,7 @@ func cmdEval(args []string) {
 		}
 	}
 }
+
 func cmdRender(args []string) {
 	fs := flag.NewFlagSet("render", flag.ExitOnError)
 	out := fs.String("o", "", "output HTML file (default stdout)")
@@ -105,7 +112,7 @@ func cmdRender(args []string) {
 	if err != nil {
 		dieDoc(doc, err)
 	}
-	frag, err := core.RenderFragment(doc, r)
+	frag, err := core.RenderFragmentBounded(doc, r)
 	if err != nil {
 		dieDoc(doc, err)
 	}
@@ -119,9 +126,10 @@ func cmdRender(args []string) {
 	}
 	fmt.Printf("wrote %s\n", *out)
 }
+
 func cmdOpen(args []string) {
 	fs := flag.NewFlagSet("open", flag.ExitOnError)
-	addr := fs.String("addr", "127.0.0.1:8080", "listen address")
+	addr := fs.String("addr", "127.0.0.1:8080", "loopback listen address")
 	fs.Parse(args)
 	doc := oneFile("open", fs.Args())
 	if _, err := core.Evaluate(doc, nil); err != nil {
@@ -131,12 +139,22 @@ func cmdOpen(args []string) {
 		die(err)
 	}
 }
-func cmdInspect(args []string) { doc := oneFile("inspect", args); fmt.Print(core.Inspect(doc)) }
+
+func cmdInspect(args []string) {
+	doc := oneFile("inspect", args)
+	fmt.Print(core.Inspect(doc))
+}
+
 func dieDoc(doc *core.Document, err error) {
 	dieSource(doc.Path, err)
 }
+
 func dieSource(path string, err error) {
 	fmt.Fprintln(os.Stderr, "md0:", core.FormatDiagnostic(path, err))
 	os.Exit(1)
 }
-func die(err error) { fmt.Fprintln(os.Stderr, "md0:", err); os.Exit(1) }
+
+func die(err error) {
+	fmt.Fprintln(os.Stderr, "md0:", err)
+	os.Exit(1)
+}
