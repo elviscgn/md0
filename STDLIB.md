@@ -15,6 +15,8 @@ md0 intentionally ships with **zero third-party runtime dependencies**.
 | CSP hashing | `crypto/sha256` + `encoding/base64` |
 | URL / host validation | `net`, `net/url`, and `mime` |
 | Charting library | Inline SVG generated directly by md0 |
+| Math typesetting library | Bounded LaTeX-like parser rendered to native MathML |
+| Function-plot library | `go/parser` for syntax plus an md0-owned numeric AST allowlist and native SVG renderer |
 | HTML escaping/sanitizing helper | `html.EscapeString` plus renderer-controlled markup |
 | Filesystem and live-source polling | `os`, `bufio`, `io`, and SHA-256 source revisions |
 | Numeric helper package | `math`, `strconv` |
@@ -25,6 +27,8 @@ md0 intentionally ships with **zero third-party runtime dependencies**.
 ## Security boundary
 
 The Go runtime itself can read the document chosen by the user and, for `md0 open`, bind a loopback HTTP server. **The md0/PURE document language cannot request filesystem access, network access, process spawning, environment variables, package imports, native code, or dynamic evaluation.** Those operations have no syntax and no evaluator primitive.
+
+The plot renderer does not execute Go. `go/parser` is used only to obtain an expression AST; md0 then accepts a small numeric subset itself. Selectors, methods, arbitrary identifiers, composite values, and unrecognized AST nodes fail closed.
 
 The loopback viewer's capability tokens, CSP hashes, host/origin checks, request limits, and session store are also implemented only with Go's standard library. See `SECURITY.md` for the threat model.
 
