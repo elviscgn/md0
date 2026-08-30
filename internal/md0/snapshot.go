@@ -38,13 +38,12 @@ func BuildSnapshot(doc *Document, result *EvalResult) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256([]byte(doc.Source))
 	return &Snapshot{
 		Schema:     SnapshotSchema,
 		MD0Version: RuntimeVersion,
 		Source: SnapshotSource{
 			Name:   filepath.Base(doc.Path),
-			SHA256: hex.EncodeToString(sum[:]),
+			SHA256: sourceSHA256(doc.Source),
 		},
 		Values: inputJSONValues(doc.Nodes, result),
 		Output: SnapshotOutput{
@@ -52,6 +51,11 @@ func BuildSnapshot(doc *Document, result *EvalResult) (*Snapshot, error) {
 			Assertions: append([]AssertionResult(nil), result.Assertions...),
 		},
 	}, nil
+}
+
+func sourceSHA256(source string) string {
+	sum := sha256.Sum256([]byte(source))
+	return hex.EncodeToString(sum[:])
 }
 
 func MarshalSnapshot(doc *Document, result *EvalResult) ([]byte, error) {

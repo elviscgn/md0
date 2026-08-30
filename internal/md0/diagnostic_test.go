@@ -76,7 +76,7 @@ Result: **{{ doubled }}**`)
 
 func TestInteractiveRuntimePageHasVisibleErrorChannel(t *testing.T) {
 	page := renderInteractiveRuntimePage("demo.md", `<div class="md0-doc"></div>`, "test-capability-token")
-	for _, want := range []string{`id="md0-status"`, `aria-live="polite"`, `name="md0-runtime-token"`, "x-md0-token", "payload.error", "aria-invalid", "node.outerHTML=patch.html"} {
+	for _, want := range []string{`id="md0-status"`, `aria-live="polite"`, `name="md0-runtime-token"`, `name="md0-source-revision"`, "x-md0-token", "payload.error", "aria-invalid", "node.outerHTML=patch.html", "/source-status", "Export snapshot", "Save values to Markdown"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("interactive runtime page missing %q", want)
 		}

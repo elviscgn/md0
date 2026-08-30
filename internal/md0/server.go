@@ -267,7 +267,7 @@ func newHandlerForAddrWithValues(doc *Document, addr string, initialValues map[s
 			return
 		}
 		w.Header().Set("content-type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, renderInteractiveRuntimePage(doc.Path, frag, token))
+		_, _ = io.WriteString(w, renderInteractiveRuntimePageRevision(doc.Path, frag, token, sourceSHA256(doc.Source)))
 	})
 	mux.HandleFunc("POST /render", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -371,7 +371,19 @@ func ServeWithValues(doc *Document, addr string, initialValues map[string]string
 	if err != nil {
 		return err
 	}
-	fmt.Printf("md0 serving %s at http://%s\n", doc.Path, addr)
+	return serveRuntime(doc.Path, addr, handler)
+}
+
+func ServeFileWithValues(path, addr string, initialValues map[string]string) error {
+	handler, err := newLiveDocumentHandler(path, addr, initialValues)
+	if err != nil {
+		return err
+	}
+	return serveRuntime(path, addr, handler)
+}
+
+func serveRuntime(path, addr string, handler http.Handler) error {
+	fmt.Printf("md0 serving %s at http://%s\n", path, addr)
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           handler,

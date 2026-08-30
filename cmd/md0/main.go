@@ -169,7 +169,7 @@ func cmdOpen(args []string) {
 	if _, err := core.Evaluate(doc, values); err != nil {
 		dieDoc(doc, err)
 	}
-	if err := core.ServeWithValues(doc, *addr, values); err != nil {
+	if err := core.ServeFileWithValues(doc.Path, *addr, values); err != nil {
 		die(err)
 	}
 }

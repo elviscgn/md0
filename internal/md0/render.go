@@ -419,8 +419,12 @@ const pageJS = `
 let md0Timer;
 let md0Busy=false;
 let md0Queued=false;
-document.addEventListener('input',e=>{if(!e.target.matches('[data-md0-input]'))return;clearTimeout(md0Timer);md0Timer=setTimeout(md0Refresh,120)});
-document.addEventListener('change',e=>{if(e.target.matches('[data-md0-input]'))md0Refresh()});
+function md0CurrentInputs(){const values={};document.querySelectorAll('[data-md0-input]').forEach(el=>{values[el.name]=el.type==='checkbox'?String(el.checked):el.value});return values}
+function md0RememberValues(){try{sessionStorage.setItem('md0:values',JSON.stringify(md0CurrentInputs()))}catch{}}
+function md0RestoreValues(){let values;try{values=JSON.parse(sessionStorage.getItem('md0:values')||'null')}catch{}if(!values||typeof values!=='object')return;let restored=false;document.querySelectorAll('[data-md0-input]').forEach(el=>{if(!Object.prototype.hasOwnProperty.call(values,el.name))return;if(el.type==='checkbox')el.checked=values[el.name]==='true';else el.value=values[el.name];restored=true});if(restored)md0Refresh()}
+document.addEventListener('input',e=>{if(!e.target.matches('[data-md0-input]'))return;md0RememberValues();clearTimeout(md0Timer);md0Timer=setTimeout(md0Refresh,120)});
+document.addEventListener('change',e=>{if(e.target.matches('[data-md0-input]')){md0RememberValues();md0Refresh()}});
 async function md0Refresh(){md0Queued=true;if(md0Busy)return;md0Busy=true;try{while(md0Queued){md0Queued=false;await md0SendLatest()}}finally{md0Busy=false}}
 async function md0SendLatest(){const values={};document.querySelectorAll('[data-md0-input]').forEach(el=>{values[el.name]=el.type==='checkbox'?String(el.checked):el.value});const r=await fetch('/render',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(values)});if(!r.ok){console.error(await r.text());return}const payload=await r.json();for(const patch of payload.patches){const node=document.getElementById(patch.dom_id);if(!node){console.warn('md0 patch target missing',patch.node);continue}node.outerHTML=patch.html}}
+setTimeout(md0RestoreValues,0);
 `
