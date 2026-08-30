@@ -2,7 +2,7 @@
 
 md0 is designed around one rule: **interactivity without authority**.
 
-An md0/PURE document may calculate, react to typed inputs, conditionally render, assert, and produce tables/charts. It has no document-language primitive for shell execution, process spawning, arbitrary filesystem access, network sockets, environment variables, package imports, native code, or dynamic evaluation.
+An md0/PURE document may calculate, react to typed inputs, conditionally render, assert, and produce tables/charts, mathematical notation, and bounded function plots. It has no document-language primitive for shell execution, process spawning, arbitrary filesystem access, network sockets, environment variables, package imports, native code, or dynamic evaluation.
 
 ## Threat model
 
@@ -12,15 +12,25 @@ The host operator and other processes already running as the same local user are
 
 ## Document boundary
 
-md0/PURE keeps dangerous capabilities absent from the document language rather than granting them and attempting to filter them later. Documents must be valid UTF-8, expressions and block depth are bounded, live string inputs are capped, and chart/table shapes have explicit ceilings.
+md0/PURE keeps dangerous capabilities absent from the document language rather than granting them and attempting to filter them later. Documents must be valid UTF-8, expressions and block depth are bounded, live string inputs are capped, and chart/table/plot shapes have explicit ceilings.
 
 The expression parser propagates lexer failures at every token advance rather than continuing from stale parser state. String-producing expressions are capped at 1 MiB per computed value, and interpolation/rendered responses have independent size ceilings. Together these prevent malformed expressions and repeated string calculations from becoming unbounded parser/evaluator work. See `LIMITS.md` for the complete current bounds and `PERFORMANCE.md` for the measured scale harness.
 
 `@data` declarations do not contain paths and do not grant filesystem access. Only the host CLI can bind a user-selected file with `--data name=FILE`. Bindings must match declarations exactly, and file size, aggregate size, JSON depth/value count, and CSV row/column shape are bounded before evaluation.
 
+## Math and function-plot boundary
+
+Mathematical notation is converted from a deliberately small LaTeX-like surface into renderer-controlled native MathML. It is not a TeX engine: there is no package loading, macro execution, arbitrary HTML command, file inclusion, shell escape, or external asset fetch.
+
+Semantic `plot` fences are converted to native SVG. Plot expressions are parsed with Go's standard-library `go/parser`, but parsed syntax is **not executed as Go**. md0 walks the resulting AST itself and accepts only numeric literals, the local variable `x`, constants `pi`/`e`, basic numeric operators, and an explicit allowlist of math functions. Selectors, methods, indexing, composite literals, strings, arbitrary identifiers, and unrecognized AST nodes fail closed.
+
+Plot work is bounded to at most four curves and 32–1,024 samples per curve. Domain errors and non-finite values produce curve gaps or a visible plot diagnostic rather than expanding authority.
+
+Ordinary fenced code continues to suppress `{{ ... }}` interpolation. Only semantic plot fences opt into interpolation so document parameters remain explicit dependency-graph inputs.
+
 ## Browser rendering boundary
 
-Document prose, interpolated values, table cells, chart labels, titles, assertion content, and code spans are emitted through renderer-controlled markup and HTML escaping. Raw document HTML is not passed through as executable HTML.
+Document prose, interpolated values, table cells, chart labels, plot labels/titles, mathematical notation, assertion content, and code spans are emitted through renderer-controlled markup and HTML escaping or bounded parsed renderers. Raw document HTML is not passed through as executable HTML.
 
 The interactive runtime sends a restrictive Content Security Policy:
 
@@ -59,7 +69,8 @@ The security corpus exercises security-sensitive behavior including:
 - bad-request followed by valid-request state recovery
 - invalid UTF-8 rejection
 - direct expression-parser lexer-error propagation
-- document, expression-token, expression-nesting, block-depth, string-input, computed-string, interpolation-output, chart, and table limits
+- document, expression-token, expression-nesting, block-depth, string-input, computed-string, interpolation-output, chart, plot, and table limits
+- unsafe/unrecognized function-plot AST forms fail closed
 - undeclared, missing, duplicate, malformed, oversized, and excessively nested data attachments
 - live source diagnostics, recovery, and source-status request boundaries
 - capability-authenticated snapshot and updated-Markdown exports
