@@ -1,0 +1,233 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: md0-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.23.x'
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l $(find . -name '*.go' -type f))"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test ./...
+
+      - name: Adversarial security corpus
+        run: go test ./internal/md0 -run='^TestSecurity' -count=1
+
+      - name: Race detector
+        run: go test -race ./...
+
+      - name: Fuzz parser and evaluator
+        shell: bash
+        run: |
+          set +e
+          go test ./internal/md0 -run='^$' -fuzz=FuzzParseAndEvaluateNeverPanics -fuzztime=10s
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "--- fuzz corpus produced by failing run ---"
+            find internal/md0/testdata/fuzz -type f -maxdepth 3 -print 2>/dev/null || true
+            while IFS= read -r file; do
+              echo "--- $file (base64) ---"
+              base64 -w 0 "$file" || true
+              echo
+            done < <(find internal/md0/testdata/fuzz -type f -maxdepth 3 2>/dev/null || true)
+          fi
+          exit "$status"
+
+      - name: Runtime scale benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/md0 -run='^$' -bench='^BenchmarkRuntime$' -benchmem -benchtime=50ms -count=1 | tee /tmp/md0-bench.txt
+          grep -q 'BenchmarkRuntime/chain/5000/incremental' /tmp/md0-bench.txt
+          grep -q 'BenchmarkRuntime/fanout/5000/incremental' /tmp/md0-bench.txt
+
+      - name: Prove zero third-party dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          external_modules="$(go list -m -f '{{if not .Main}}{{.Path}}{{end}}' all)"
+          if [ -n "$external_modules" ]; then
+            echo "Third-party Go modules detected in module build list:"
+            echo "$external_modules"
+            exit 1
+          fi
+
+          external_package_modules="$(go list -deps -f '{{with .Module}}{{if not .Main}}{{.Path}} {{.Version}}{{end}}{{end}}' ./... | sort -u)"
+          if [ -n "$external_package_modules" ]; then
+            echo "Packages owned by third-party Go modules detected in dependency closure:"
+            echo "$external_package_modules"
+            exit 1
+          fi
+
+          if grep -Eq '^[[:space:]]*require([[:space:](]|$)' go.mod; then
+            echo "go.mod contains a require directive"
+            cat go.mod
+            exit 1
+          fi
+
+          go mod tidy
+          if [ -n "$(git status --porcelain -- go.mod go.sum)" ]; then
+            echo "go mod tidy changed the module manifest"
+            git status --short -- go.mod go.sum
+            git diff -- go.mod go.sum || true
+            exit 1
+          fi
+
+          echo "module build list:"
+          go list -m all
+          echo "external package modules: none"
+          echo "zero third-party runtime dependencies verified"
+
+      - name: Build
+        run: make build
+
+      - name: CLI smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(./bin/md0 version)" = "md0 v0.1.0"
+
+          ./bin/md0 validate examples/parser-benchmark.md
+          ./bin/md0 eval examples/parser-benchmark.md | tee /tmp/md0-eval.txt
+          ./bin/md0 inspect examples/parser-benchmark.md | tee /tmp/md0-inspect.txt
+          ./bin/md0 render -o /tmp/parser-benchmark.html examples/parser-benchmark.md
+
+          ./bin/md0 validate examples/runtime-scale.md
+          ./bin/md0 eval examples/runtime-scale.md | tee /tmp/md0-runtime-eval.txt
+          ./bin/md0 render -o /tmp/runtime-scale.html examples/runtime-scale.md
+
+          grep -q 'change' /tmp/md0-eval.txt
+          grep -q 'Profile             md0/PURE' /tmp/md0-inspect.txt
+          grep -q 'Dependency graph' /tmp/md0-inspect.txt
+          grep -q 'Cycles            0' /tmp/md0-inspect.txt
+          grep -q 'Evaluation plan' /tmp/md0-inspect.txt
+          grep -q 'Mode              dependency-first' /tmp/md0-inspect.txt
+          grep -q 'Render order      document order' /tmp/md0-inspect.txt
+          grep -q 'Network           no' /tmp/md0-inspect.txt
+          grep -q 'Parse time' /tmp/parser-benchmark.html
+          grep -q 'illustrative values' /tmp/parser-benchmark.html
+          grep -q 'chain_frontend_ms' /tmp/md0-runtime-eval.txt
+          grep -q 'fanout_frontend_ms' /tmp/md0-runtime-eval.txt
+          grep -q 'md0 Runtime Scale Snapshot' /tmp/runtime-scale.html
+          test -s /tmp/parser-benchmark.html
+          test -s /tmp/runtime-scale.html
+
+      - name: Reproducible build check
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/md0-repro/a /tmp/md0-repro/b
+
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o /tmp/md0-repro/a/md0 ./cmd/md0
+          go build -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o /tmp/md0-repro/b/md0 ./cmd/md0
+
+          cmp /tmp/md0-repro/a/md0 /tmp/md0-repro/b/md0
+          sha256sum /tmp/md0-repro/a/md0 /tmp/md0-repro/b/md0
+
+  portability:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go build -trimpath -buildvcs=false ./cmd/md0
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [verify, portability]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Build release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          FLAGS='-s -w -buildid='
+
+          GOOS=linux   GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-linux-amd64 ./cmd/md0
+          GOOS=linux   GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-linux-arm64 ./cmd/md0
+          GOOS=darwin  GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-darwin-amd64 ./cmd/md0
+          GOOS=darwin  GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-darwin-arm64 ./cmd/md0
+          GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-windows-amd64.exe ./cmd/md0
+
+          (cd dist && sha256sum md0-* > SHA256SUMS.txt)
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --title "md0 $GITHUB_REF_NAME"
