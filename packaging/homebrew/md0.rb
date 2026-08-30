@@ -2,7 +2,7 @@ class Md0 < Formula
   desc "Safe computational Markdown runtime"
   homepage "https://github.com/elviscgn/md0"
   head "https://github.com/elviscgn/md0.git", branch: "main"
-  license "Apache-2.0"
+  license "MIT"
 
   depends_on "go" => :build
 
