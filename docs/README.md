@@ -8,6 +8,7 @@ md0 is a zero-third-party-dependency runtime for interactive Markdown that remai
 
 - [`FEATURES.md`](FEATURES.md) — user-facing reference for every supported feature with examples.
 - [`MATH_AND_PLOTS.md`](MATH_AND_PLOTS.md) — mathematical notation and reactive function plotting.
+- [`CLI_AND_EDITOR.md`](CLI_AND_EDITOR.md) — document launcher, terminal presentation, and built-in live authoring mode.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — parser → AST → dependency graph → evaluation → rendering → reactive updates.
 - [`AGENTS.md`](AGENTS.md) — repository guidance for AI coding agents and automated contributors.
 - [`../SPEC.md`](../SPEC.md) — canonical md0/PURE 0.1 language contract.
@@ -28,6 +29,8 @@ When documentation disagrees, use this order:
 5. `README.md` for the public overview.
 
 Math notation and `plot` fences are rendering features layered onto Markdown rather than new md0/PURE directives. Their current contract is documented in `MATH_AND_PLOTS.md` and covered by executable tests.
+
+The CLI launcher and built-in editor are host tooling, not new document-language authority. Their behavior and save boundary are documented in `CLI_AND_EDITOR.md`.
 
 ## Flagship examples
 
