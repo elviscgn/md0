@@ -193,9 +193,10 @@ func (u terminalUI) launcherView(path string, selected int, interactive bool) st
 
 	fmt.Fprintln(&b)
 	if interactive {
-		fmt.Fprintf(&b, "%s %s   %s %s   %s %s\n",
+		fmt.Fprintf(&b, "%s %s   %s %s   %s %s   %s %s\n",
 			u.paint(ansiBold+palette.accent, "↑↓ / jk"), u.paint(ansiDim, "navigate"),
 			u.paint(ansiBold+palette.secondary, "enter"), u.paint(ansiDim, "select"),
+			u.paint(ansiBold+palette.secondary, "?"), u.paint(ansiDim, "help"),
 			u.paint(ansiBold+palette.error, "q"), u.paint(ansiDim, "quit"))
 	} else {
 		fmt.Fprintln(&b, u.paint(ansiDim, "Type a shortcut and press Enter"))
