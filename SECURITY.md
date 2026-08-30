@@ -8,7 +8,7 @@ An md0/PURE document may calculate, react to typed inputs, conditionally render,
 
 The runtime treats the `.md` document, live input values, and explicitly selected data attachments as untrusted data. The goal is to prevent those values from becoming ambient host authority or executable browser markup.
 
-The host operator and other processes already running as the same local user are trusted. `md0 open` is a hardened **local tool**, not an internet-facing application server, and it refuses non-loopback listen addresses. `md0 edit` is a local terminal buffer and does not listen on a socket.
+The host operator and other processes already running as the same local user are trusted. `md0 open` is a hardened **local tool**, not an internet-facing application server, and it refuses non-loopback listen addresses. `md0 edit` is a local terminal buffer and does not listen on a socket. Host authoring features may write only the source path explicitly selected by the operator; that capability is not exposed to the md0 document language.
 
 ## Document boundary
 
@@ -54,15 +54,27 @@ The non-mutating `GET /source-status` live-authoring probe is protected by the s
 
 `POST /render` accepts only `application/json`, caps the request body at 1 MiB, and requires exactly one JSON object. Unknown input names and invalid typed values are rejected without committing partial reactive state.
 
-## Built-in editor write boundary
+## Host authoring write boundary
 
-`md0 open FILE` adds host-authoring endpoints around the **single source path explicitly selected by the operator** so the viewer's Settings panel can enable source editing. The document language cannot invoke these endpoints, choose a different path, or obtain the editor capability token. `md0 edit FILE` is a separate local terminal editor and does not start an HTTP server.
+The terminal editor and browser source pane are host-side authoring capabilities around the **single source path explicitly selected by the operator**. Neither expands the md0/PURE language: document source cannot choose another path, request a write, obtain editor capability credentials, or discover other files.
 
-The editor receives a separate cryptographically random 256-bit capability token in addition to the normal loopback Host, Origin, and `Sec-Fetch-Site` checks. Editor draft and save requests must present that token.
+### Terminal editor
 
-Typing in the source pane does not mutate the filesystem. Draft source is bounded, parsed, evaluated, and rendered in memory. An explicit Save action or `Cmd/Ctrl+S` may write only the selected source path, preserving its existing file permissions. Editor saves carry the source revision originally opened by the browser and reject stale revisions instead of overwriting an external edit. The source remains subject to the 2 MiB and UTF-8 document bounds.
+`md0 edit FILE`, and the editor entered from `md0 FILE`, do not start an HTTP server. Terminal edits are held in the editor buffer and are autosaved after a short bounded debounce to the one selected path; `Ctrl+S` forces the same save path immediately. The autosave worker serializes writes rather than launching a filesystem write for every keystroke.
 
-The editor intentionally does not expose directory listing, arbitrary-path read/write, file creation, shell execution, environment access, or attachment rebinding. Data attachments remain those selected by the host when authoring mode was started.
+Every terminal save compares the current file's SHA-256 revision against the revision md0 last observed. If another process changed the file first, md0 rejects the save instead of overwriting newer work. The editor preserves the selected file's existing permissions and line-ending convention, requires valid UTF-8, and retains the 2 MiB document limit. Undo and redo modify only the local editor buffer and then pass through the same revision-checked save path.
+
+Autosave is host behavior, not document behavior. A document cannot enable it for another path, change the debounce target, enumerate the filesystem, or invoke terminal-editor operations.
+
+### Browser source pane
+
+`md0 open FILE` adds host-authoring endpoints around the same explicitly selected source path so the viewer's Settings panel can enable source editing. The document language cannot invoke these endpoints, choose a different path, or obtain the editor capability token.
+
+The browser editor receives a separate cryptographically random 256-bit capability token in addition to the normal loopback Host, Origin, and `Sec-Fetch-Site` checks. Editor draft and save requests must present that token.
+
+Typing in the browser source pane does **not** mutate the filesystem. Draft source is bounded, parsed, evaluated, and rendered in memory. An explicit Save action or `Cmd/Ctrl+S` may write only the selected source path, preserving its existing file permissions. Browser saves carry the source revision originally opened by the browser and reject stale revisions instead of overwriting an external edit. The source remains subject to the 2 MiB and UTF-8 document bounds.
+
+Neither editor exposes directory listing, arbitrary-path read/write, file creation, shell execution, environment access, or attachment rebinding. Data attachments remain those selected by the host when authoring mode was started.
 
 The HTTP server sets read-header, read, write, idle, and maximum-header limits. The runtime does not enable CORS.
 
@@ -84,7 +96,8 @@ The security corpus exercises security-sensitive behavior including:
 - undeclared, missing, duplicate, malformed, oversized, and excessively nested data attachments
 - live source diagnostics, recovery, and source-status request boundaries
 - capability-authenticated snapshot and updated-Markdown exports
-- editor source escaping, in-memory drafts, capability-token rejection, save-path scoping, and permission preservation
+- browser editor source escaping, in-memory drafts, capability-token rejection, save-path scoping, and permission preservation
+- terminal editor revision conflicts, permission/line-ending preservation, bounded source writes, and autosave stale-write rejection
 
 CI runs this corpus explicitly in addition to the full unit suite, race detector, parser/evaluator fuzzing, 5,000-node scale benchmarks, zero-third-party-module proof, reproducible-build check, and cross-platform tests.
 
