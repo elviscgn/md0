@@ -6,10 +6,10 @@ import (
 )
 
 func TestMathRenderingUsesNativeMathML(t *testing.T) {
-	got := renderMarkdown(`Inline $x^2 + \\alpha$ math.
+	got := renderMarkdown(`Inline $x^2 + \alpha$ math.
 
 $$
-f(x)=\\frac{x^2+1}{\\sqrt{2}}
+f(x)=\frac{x^2+1}{\sqrt{2}}
 $$`)
 	for _, want := range []string{"<math", "<msup>", "<mfrac>", "<msqrt>", "α"} {
 		if !strings.Contains(got, want) {
