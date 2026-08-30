@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const maxInputStringBytes = 16 * 1024
+
 type AssertionResult struct {
 	Line            int
 	Source, Message string
@@ -215,6 +217,9 @@ func validateInputType(typ string, v Value) error {
 	case "string", "text":
 		if v.Kind != StringKind {
 			return fmt.Errorf("default must evaluate to string")
+		}
+		if len(v.String()) > maxInputStringBytes {
+			return fmt.Errorf("string input exceeds 16 KiB limit")
 		}
 	default:
 		return fmt.Errorf("unknown input type %q", typ)
