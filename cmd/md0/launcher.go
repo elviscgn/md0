@@ -281,7 +281,7 @@ func cmdEdit(args []string) {
 		cliError("edit expects exactly one file")
 		os.Exit(2)
 	}
-	if err := runTerminalEditorUX(args[0]); err != nil {
+	if err := runTerminalEditorUXEscape(args[0]); err != nil {
 		die(err)
 	}
 }
