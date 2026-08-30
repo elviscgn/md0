@@ -10,12 +10,13 @@ md0 intentionally ships with **zero third-party runtime dependencies**.
 | Template/interpolation engine | A bounded `{{ expression }}` interpolator implemented with the md0 evaluator |
 | HTTP router/framework | `net/http` `ServeMux` |
 | JSON package | `encoding/json` |
+| CSV attachment reader | `encoding/csv` |
 | Session/capability helper | `crypto/rand` plus a small bounded in-memory store |
 | CSP hashing | `crypto/sha256` + `encoding/base64` |
 | URL / host validation | `net`, `net/url`, and `mime` |
 | Charting library | Inline SVG generated directly by md0 |
 | HTML escaping/sanitizing helper | `html.EscapeString` plus renderer-controlled markup |
-| Filesystem abstraction | `os`, `bufio`, `io` |
+| Filesystem and live-source polling | `os`, `bufio`, `io`, and SHA-256 source revisions |
 | Numeric helper package | `math`, `strconv` |
 | Collection helpers | Built-in slices/maps plus `sort` |
 | Test assertion package | Go's built-in `testing` package |

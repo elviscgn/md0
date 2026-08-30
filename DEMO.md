@@ -19,7 +19,7 @@ make build
 Expected version:
 
 ```text
-md0 v0.1.0
+md0 v0.2.0
 ```
 
 Then show that `go.mod` contains no `require` block:
@@ -60,6 +60,10 @@ Show the visible consequence:
 - unrelated DOM regions are not replaced
 
 Explain that md0 uses the dependency graph to recompute and patch only affected regions.
+
+Edit the source file while the viewer stays open. A valid change reloads automatically; a malformed expression shows a source diagnostic while the last valid page remains visible. Fix the expression and show automatic recovery.
+
+Use **Export snapshot** to download the current values, source hash, versions, assertions, and generated HTML. Use **Save values to Markdown** to create a readable document with the explored values written back as defaults.
 
 ## 3:10 — Security boundary
 

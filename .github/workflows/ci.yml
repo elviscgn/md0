@@ -127,7 +127,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(./bin/md0 version)" = "md0 v0.1.0"
+          test "$(./bin/md0 version)" = "md0 v0.2.0"
+
+          sh -n install.sh
 
           ./bin/md0 validate examples/parser-benchmark.md
           ./bin/md0 eval examples/parser-benchmark.md | tee /tmp/md0-eval.txt
@@ -137,6 +139,13 @@ jobs:
           ./bin/md0 validate examples/runtime-scale.md
           ./bin/md0 eval examples/runtime-scale.md | tee /tmp/md0-runtime-eval.txt
           ./bin/md0 render -o /tmp/runtime-scale.html examples/runtime-scale.md
+
+          ./bin/md0 validate examples/decision-record.md
+          ./bin/md0 render --snapshot /tmp/decision.snapshot.json -o /tmp/decision.html examples/decision-record.md
+          ./bin/md0 validate --data services=examples/data/incident-services.csv examples/incident-report.md
+          ./bin/md0 render --data services=examples/data/incident-services.csv -o /tmp/incident.html examples/incident-report.md
+          ./bin/md0 validate --data assumptions=examples/data/scenario-assumptions.json examples/scenario-model.md
+          ./bin/md0 render --data assumptions=examples/data/scenario-assumptions.json -o /tmp/scenario.html examples/scenario-model.md
 
           grep -q 'change' /tmp/md0-eval.txt
           grep -q 'Profile             md0/PURE' /tmp/md0-inspect.txt
@@ -151,6 +160,10 @@ jobs:
           grep -q 'chain_frontend_ms' /tmp/md0-runtime-eval.txt
           grep -q 'fanout_frontend_ms' /tmp/md0-runtime-eval.txt
           grep -q 'md0 Runtime Scale Snapshot' /tmp/runtime-scale.html
+          grep -q 'md0.snapshot/v1' /tmp/decision.snapshot.json
+          grep -q 'Option A' /tmp/decision.html
+          grep -q 'checkout-api' /tmp/incident.html
+          grep -q 'Projected revenue' /tmp/scenario.html
           test -s /tmp/parser-benchmark.html
           test -s /tmp/runtime-scale.html
 
@@ -216,14 +229,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist
+          mkdir -p dist package
           FLAGS='-s -w -buildid='
 
-          GOOS=linux   GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-linux-amd64 ./cmd/md0
-          GOOS=linux   GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-linux-arm64 ./cmd/md0
-          GOOS=darwin  GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-darwin-amd64 ./cmd/md0
-          GOOS=darwin  GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-darwin-arm64 ./cmd/md0
-          GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o dist/md0-windows-amd64.exe ./cmd/md0
+          build_archive() {
+            os="$1"
+            arch="$2"
+            binary="md0"
+            if [ "$os" = "windows" ]; then binary="md0.exe"; fi
+            rm -rf package/*
+            GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="$FLAGS" -o "package/$binary" ./cmd/md0
+            cp LICENSE README.md package/
+            if [ "$os" = "windows" ]; then
+              (cd package && zip -q "../dist/md0-${os}-${arch}.zip" "$binary" LICENSE README.md)
+            else
+              tar -C package -czf "dist/md0-${os}-${arch}.tar.gz" "$binary" LICENSE README.md
+            fi
+          }
+
+          build_archive linux amd64
+          build_archive linux arm64
+          build_archive darwin amd64
+          build_archive darwin arm64
+          build_archive windows amd64
 
           (cd dist && sha256sum md0-* > SHA256SUMS.txt)
 

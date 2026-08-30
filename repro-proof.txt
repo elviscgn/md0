@@ -10,7 +10,7 @@ sha256sum /tmp/md0-a /tmp/md0-b
 
 Verified with Go 1.27.0 using linux/amd64 cross-builds:
 
-396a4d90eac00acbf3c5fe325716cdcc90d2e2883602a7270fd6599e08370599  /tmp/md0-a
-396a4d90eac00acbf3c5fe325716cdcc90d2e2883602a7270fd6599e08370599  /tmp/md0-b
+25918b876479826e3a48fa70c6863bf0fd2721fb7128d1d3add83f5014e7917d  /tmp/md0-a
+25918b876479826e3a48fa70c6863bf0fd2721fb7128d1d3add83f5014e7917d  /tmp/md0-b
 
-The two v0.1 artifacts were byte-identical for that target. CI repeats a native byte-for-byte check on every main-branch run; this file is a recorded snapshot, not a substitute for the live CI result.
+The two v0.2 artifacts were byte-identical for that target. CI repeats a native byte-for-byte check on every main-branch run; this file is a recorded snapshot, not a substitute for the live CI result.

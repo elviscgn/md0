@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	RuntimeVersion = "v0.1.0"
+	RuntimeVersion = "v0.2.0"
 	SnapshotSchema = "md0.snapshot/v1"
 )
 

@@ -8,7 +8,7 @@
 [![Markdown](https://img.shields.io/badge/Markdown-native-231F20?style=for-the-badge&logo=markdown&logoColor=white)](#)
 [![PURE](https://img.shields.io/badge/md0%2FPURE-bounded-C25A2B?style=for-the-badge&logo=letsencrypt&logoColor=white)](SECURITY.md)
 [![Dependencies](https://img.shields.io/badge/runtime_deps-0-2E7D4F?style=for-the-badge&logo=dependabot&logoColor=white)](STDLIB.md)
-[![Status](https://img.shields.io/badge/status-v0.1.0-7A6E67?style=for-the-badge&logo=readthedocs&logoColor=white)](#)
+[![Status](https://img.shields.io/badge/status-v0.2.0-7A6E67?style=for-the-badge&logo=readthedocs&logoColor=white)](#)
 
 </div>
 
@@ -50,6 +50,56 @@ values = [baseline_ms, candidate_ms]
 
 The artifact remains readable Markdown. md0 supplies computation when you want it.
 
+## Install
+
+Tagged releases include checksum-verified archives for Linux, macOS, and Windows.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/elviscgn/md0/main/install.sh | sh
+```
+
+Set `INSTALL_DIR` to install somewhere other than `/usr/local/bin`, or `MD0_VERSION=v0.2.0` to select an exact release. From source:
+
+```bash
+go install github.com/elviscgn/md0/cmd/md0@latest
+```
+
+Homebrew users can build the current main branch with:
+
+```bash
+brew install --HEAD ./packaging/homebrew/md0.rb
+```
+
+## Author, explore, save, share
+
+```bash
+# Explore with reviewed values and data.
+md0 open --values values.json --data services=services.csv report.md
+
+# Produce static HTML plus a durable decision snapshot.
+md0 render --values values.json --data services=services.csv \
+  --snapshot report.snapshot.json -o report.html report.md
+
+# Reuse the exact recorded inputs later.
+md0 validate --values report.snapshot.json --data services=services.csv report.md
+```
+
+The browser has **Export snapshot** and **Save values to Markdown** actions. Source edits are reparsed automatically; malformed edits show a diagnostic while the last valid document remains visible.
+
+Data is always explicit: the document declares `@data services csv` or `@data assumptions json`, while the person running md0 selects the corresponding file. The document cannot construct or discover paths.
+
+## Real-world templates
+
+- [`examples/decision-record.md`](examples/decision-record.md) — engineering option and budget decision
+- [`examples/incident-report.md`](examples/incident-report.md) — reliability report backed by explicit CSV measurements
+- [`examples/scenario-model.md`](examples/scenario-model.md) — budget and growth model backed by reviewed JSON assumptions
+
+```bash
+md0 open examples/decision-record.md
+md0 open --data services=examples/data/incident-services.csv examples/incident-report.md
+md0 open --data assumptions=examples/data/scenario-assumptions.json examples/scenario-model.md
+```
+
 ## The missing middle
 
 | | Markdown | **md0** | Application |
@@ -63,7 +113,7 @@ The artifact remains readable Markdown. md0 supplies computation when you want i
 
 **md0 keeps the explanation, assumptions, calculations, and validity checks in the same file.**
 
-## What v0.1 actually does
+## What v0.2 actually does
 
 - handwritten Markdown/directive parser and expression engine
 - dependency graph with cycle/unknown-symbol validation
@@ -87,7 +137,7 @@ md0 inspect document.md
 md0 version
 ```
 
-`render` creates static HTML and can record a durable snapshot containing input values, source hash, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
+`render` creates static HTML and can record a durable snapshot containing input values, source and attachment hashes, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
 
 ## md0/PURE
 
@@ -169,7 +219,7 @@ Every push also runs formatting, `go vet`, unit tests, the adversarial security 
 
 ## Current scope
 
-v0.1 intentionally implements a focused Markdown subset rather than all of CommonMark, and bar charts are the first chart type. The language is deliberately small enough to inspect and bound.
+v0.2 intentionally implements a focused Markdown subset rather than all of CommonMark, and bar charts are the first chart type. The language is deliberately small enough to inspect and bound.
 
 The dependency graph, dependency-first evaluation, incremental recomputation, and targeted DOM patching are implemented today — they are not roadmap claims.
 
