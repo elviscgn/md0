@@ -1,6 +1,8 @@
 package md0
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,12 +30,24 @@ type patchErrorResponse struct {
 
 var inputErrorNameRE = regexp.MustCompile(`\binput ([A-Za-z_][A-Za-z0-9_]*):`)
 
+func cspHash(source string) string {
+	sum := sha256.Sum256([]byte(source))
+	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+}
+
+func runtimeContentSecurityPolicy() string {
+	return "default-src 'none'; style-src " +
+		cspHash(pageCSS) + " " + cspHash(runtimeStatusCSS) +
+		"; script-src " + cspHash(pageJS) + " " + cspHash(runtimeStatusJS) +
+		"; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+}
+
 func setRuntimeSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", runtimeContentSecurityPolicy())
 }
 
 func writePatchError(w http.ResponseWriter, status int, message, input string) {

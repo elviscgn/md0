@@ -85,7 +85,20 @@ func TestSecurityRuntimeHeadersAndRouteBoundary(t *testing.T) {
 	requireHeaderContains(t, res.Header(), "X-Content-Type-Options", "nosniff")
 	requireHeaderContains(t, res.Header(), "Referrer-Policy", "no-referrer")
 	requireHeaderContains(t, res.Header(), "Cross-Origin-Resource-Policy", "same-origin")
-	requireHeaderContains(t, res.Header(), "Content-Security-Policy", "default-src 'none'")
+	csp := res.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'none'", "script-src 'sha256-", "style-src 'sha256-", "connect-src 'self'", "frame-ancestors 'none'"} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("CSP %q missing %q", csp, want)
+		}
+	}
+	if strings.Contains(csp, "'unsafe-inline'") || strings.Contains(csp, "'unsafe-eval'") {
+		t.Fatalf("CSP contains unsafe execution escape hatch: %q", csp)
+	}
+	for _, source := range []string{pageCSS, runtimeStatusCSS, pageJS, runtimeStatusJS} {
+		if !strings.Contains(csp, cspHash(source)) {
+			t.Fatalf("CSP missing hash for built-in runtime asset")
+		}
+	}
 
 	missing := httptest.NewRecorder()
 	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/not-a-route", nil))
