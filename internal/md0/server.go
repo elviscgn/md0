@@ -20,8 +20,8 @@ import (
 
 const (
 	maxRenderBodyBytes = 1 << 20
-	maxRuntimeSessions  = 32
-	runtimeTokenBytes   = 32
+	maxRuntimeSessions = 32
+	runtimeTokenBytes  = 32
 )
 
 type patchResponse struct {
