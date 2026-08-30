@@ -48,6 +48,7 @@ const (
 	launcherKeyRender
 	launcherKeyInspect
 	launcherKeyValidate
+	launcherKeyHelp
 )
 
 func looksLikeDocumentArg(arg string) bool {
@@ -173,6 +174,8 @@ func readLauncherKey(reader *bufio.Reader) (launcherKey, error) {
 		return launcherKeyInspect, nil
 	case 'v', 'V':
 		return launcherKeyValidate, nil
+	case '?':
+		return launcherKeyHelp, nil
 	case 'q', 'Q':
 		return launcherKeyQuit, nil
 	case 0x1b:
