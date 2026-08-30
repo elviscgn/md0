@@ -50,7 +50,7 @@ func oneFile(name string, args []string) *core.Document {
 	}
 	doc, err := core.ParseFile(args[0])
 	if err != nil {
-		die(err)
+		dieSource(args[0], err)
 	}
 	return doc
 }
@@ -58,7 +58,7 @@ func cmdValidate(args []string) {
 	doc := oneFile("validate", args)
 	r, err := core.Evaluate(doc, nil)
 	if err != nil {
-		die(err)
+		dieDoc(doc, err)
 	}
 	failed := false
 	for _, a := range r.Assertions {
@@ -80,7 +80,7 @@ func cmdEval(args []string) {
 	doc := oneFile("eval", args)
 	r, err := core.Evaluate(doc, nil)
 	if err != nil {
-		die(err)
+		dieDoc(doc, err)
 	}
 	for _, k := range core.SortedEnv(r.Env) {
 		fmt.Printf("%-20s %s\n", k, r.Env[k].String())
@@ -103,11 +103,11 @@ func cmdRender(args []string) {
 	doc := oneFile("render", fs.Args())
 	r, err := core.Evaluate(doc, nil)
 	if err != nil {
-		die(err)
+		dieDoc(doc, err)
 	}
 	frag, err := core.RenderFragment(doc, r)
 	if err != nil {
-		die(err)
+		dieDoc(doc, err)
 	}
 	page := core.RenderStaticPage(doc.Path, frag)
 	if *out == "" {
@@ -125,11 +125,18 @@ func cmdOpen(args []string) {
 	fs.Parse(args)
 	doc := oneFile("open", fs.Args())
 	if _, err := core.Evaluate(doc, nil); err != nil {
-		die(err)
+		dieDoc(doc, err)
 	}
 	if err := core.Serve(doc, *addr); err != nil {
 		die(err)
 	}
 }
 func cmdInspect(args []string) { doc := oneFile("inspect", args); fmt.Print(core.Inspect(doc)) }
-func die(err error)            { fmt.Fprintln(os.Stderr, "md0:", err); os.Exit(1) }
+func dieDoc(doc *core.Document, err error) {
+	dieSource(doc.Path, err)
+}
+func dieSource(path string, err error) {
+	fmt.Fprintln(os.Stderr, "md0:", core.FormatDiagnostic(path, err))
+	os.Exit(1)
+}
+func die(err error) { fmt.Fprintln(os.Stderr, "md0:", err); os.Exit(1) }
