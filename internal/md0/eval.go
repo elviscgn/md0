@@ -189,11 +189,11 @@ func parseInputValue(typ, raw string) (Value, error) {
 		}
 		return Number(n), nil
 	case "integer":
-		n, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || math.Trunc(n) != n {
 			return Null(), fmt.Errorf("expected integer")
 		}
-		return Number(float64(n)), nil
+		return Number(n), nil
 	case "boolean", "bool":
 		b, err := strconv.ParseBool(raw)
 		if err != nil {
@@ -220,7 +220,7 @@ func validateInputType(typ string, v Value) error {
 			return fmt.Errorf("default must evaluate to number")
 		}
 	case "integer":
-		if v.Kind != NumberKind || math.IsNaN(v.Num) || math.IsInf(v.Num, 0) || math.Trunc(v.Num) != v.Num || v.Num < -math.Ldexp(1, 63) || v.Num >= math.Ldexp(1, 63) {
+		if v.Kind != NumberKind || math.IsNaN(v.Num) || math.IsInf(v.Num, 0) || math.Trunc(v.Num) != v.Num {
 			return fmt.Errorf("default must evaluate to integer")
 		}
 	case "boolean", "bool":
