@@ -1,20 +1,29 @@
 package md0
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
-const maxRenderBodyBytes = 1 << 20
+const (
+	maxRenderBodyBytes = 1 << 20
+	maxRuntimeSessions  = 32
+	runtimeTokenBytes   = 32
+)
 
 type patchResponse struct {
 	Changed    []string   `json:"changed"`
@@ -26,6 +35,13 @@ type patchResponse struct {
 type patchErrorResponse struct {
 	Error string `json:"error"`
 	Input string `json:"input,omitempty"`
+}
+
+type runtimeSessionStore struct {
+	mu       sync.Mutex
+	doc      *Document
+	sessions map[string]*ReactiveSession
+	order    []string
 }
 
 var inputErrorNameRE = regexp.MustCompile(`\binput ([A-Za-z_][A-Za-z0-9_]*):`)
@@ -67,6 +83,134 @@ func inputNameFromError(err error) string {
 	return ""
 }
 
+func newRuntimeToken() (string, error) {
+	buf := make([]byte, runtimeTokenBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate runtime token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func newRuntimeSessionStore(doc *Document) *runtimeSessionStore {
+	return &runtimeSessionStore{doc: doc, sessions: map[string]*ReactiveSession{}}
+}
+
+func (s *runtimeSessionStore) create() (string, *ReactiveSession, error) {
+	session, err := NewReactiveSession(s.doc)
+	if err != nil {
+		return "", nil, err
+	}
+
+	for {
+		token, err := newRuntimeToken()
+		if err != nil {
+			return "", nil, err
+		}
+		s.mu.Lock()
+		if _, exists := s.sessions[token]; exists {
+			s.mu.Unlock()
+			continue
+		}
+		for len(s.sessions) >= maxRuntimeSessions && len(s.order) > 0 {
+			oldest := s.order[0]
+			s.order = s.order[1:]
+			delete(s.sessions, oldest)
+		}
+		s.sessions[token] = session
+		s.order = append(s.order, token)
+		s.mu.Unlock()
+		return token, session, nil
+	}
+}
+
+func (s *runtimeSessionStore) get(token string) (*ReactiveSession, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.sessions[token]
+	if !ok {
+		return nil, false
+	}
+	for i, current := range s.order {
+		if current == token {
+			copy(s.order[i:], s.order[i+1:])
+			s.order[len(s.order)-1] = token
+			break
+		}
+	}
+	return session, true
+}
+
+func loopbackHost(host string) bool {
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func validateLoopbackAddress(addr string) (string, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("invalid listen address %q: %w", addr, err)
+	}
+	if host == "" || !loopbackHost(host) {
+		return "", fmt.Errorf("md0 open only listens on loopback addresses; got %q", addr)
+	}
+	if port == "" {
+		return "", fmt.Errorf("listen address %q has no port", addr)
+	}
+	return port, nil
+}
+
+func splitRequestHost(hostport string) (string, string, bool) {
+	host, port, err := net.SplitHostPort(hostport)
+	if err == nil {
+		return host, port, true
+	}
+	if !strings.Contains(hostport, ":") {
+		return hostport, "", true
+	}
+	return "", "", false
+}
+
+func validRuntimeHost(hostport, expectedPort string) bool {
+	host, port, ok := splitRequestHost(hostport)
+	if !ok || !loopbackHost(host) {
+		return false
+	}
+	if port == "" {
+		return expectedPort == "80"
+	}
+	return port == expectedPort
+}
+
+func validRuntimeOrigin(origin, expectedPort string) bool {
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "http" || u.User != nil || u.Path != "" && u.Path != "/" || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	host := u.Hostname()
+	if !loopbackHost(host) {
+		return false
+	}
+	port := u.Port()
+	if port == "" {
+		port = "80"
+	}
+	return port == expectedPort
+}
+
+func sameToken(got, want string) bool {
+	if len(got) != len(want) || len(want) == 0 {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
 func decodeRenderInputs(w http.ResponseWriter, r *http.Request) (map[string]string, error) {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -91,10 +235,15 @@ func decodeRenderInputs(w http.ResponseWriter, r *http.Request) (map[string]stri
 }
 
 func newHandler(doc *Document) (http.Handler, error) {
-	session, err := NewReactiveSession(doc)
+	return newHandlerForAddr(doc, "127.0.0.1:8080")
+}
+
+func newHandlerForAddr(doc *Document, addr string) (http.Handler, error) {
+	port, err := validateLoopbackAddress(addr)
 	if err != nil {
 		return nil, err
 	}
+	store := newRuntimeSessionStore(doc)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -102,21 +251,28 @@ func newHandler(doc *Document) (http.Handler, error) {
 			http.NotFound(w, r)
 			return
 		}
-		res, err := session.Reset()
+		token, session, err := store.create()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		res := session.Snapshot()
 		frag, err := RenderFragment(doc, res)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("content-type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, renderInteractiveRuntimePage(doc.Path, frag))
+		_, _ = io.WriteString(w, renderInteractiveRuntimePage(doc.Path, frag, token))
 	})
 	mux.HandleFunc("POST /render", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
+		token := r.Header.Get("X-MD0-Token")
+		session, ok := store.get(token)
+		if !ok || !sameToken(token, token) {
+			writePatchError(w, http.StatusForbidden, "invalid or expired runtime token", "")
+			return
+		}
 		values, err := decodeRenderInputs(w, r)
 		if err != nil {
 			status := http.StatusBadRequest
@@ -152,12 +308,27 @@ func newHandler(doc *Document) (http.Handler, error) {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setRuntimeSecurityHeaders(w)
+		if !validRuntimeHost(r.Host, port) {
+			http.Error(w, "invalid runtime host", http.StatusForbidden)
+			return
+		}
+		if !validRuntimeOrigin(r.Header.Get("Origin"), port) {
+			http.Error(w, "cross-origin runtime request rejected", http.StatusForbidden)
+			return
+		}
+		if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+			http.Error(w, "cross-site runtime request rejected", http.StatusForbidden)
+			return
+		}
 		mux.ServeHTTP(w, r)
 	}), nil
 }
 
 func Serve(doc *Document, addr string) error {
-	handler, err := newHandler(doc)
+	if _, err := validateLoopbackAddress(addr); err != nil {
+		return err
+	}
+	handler, err := newHandlerForAddr(doc, addr)
 	if err != nil {
 		return err
 	}
