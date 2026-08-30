@@ -10,6 +10,9 @@ md0 intentionally ships with **zero third-party runtime dependencies**.
 | Template/interpolation engine | A bounded `{{ expression }}` interpolator implemented with the md0 evaluator |
 | HTTP router/framework | `net/http` `ServeMux` |
 | JSON package | `encoding/json` |
+| Session/capability helper | `crypto/rand` plus a small bounded in-memory store |
+| CSP hashing | `crypto/sha256` + `encoding/base64` |
+| URL / host validation | `net`, `net/url`, and `mime` |
 | Charting library | Inline SVG generated directly by md0 |
 | HTML escaping/sanitizing helper | `html.EscapeString` plus renderer-controlled markup |
 | Filesystem abstraction | `os`, `bufio`, `io` |
@@ -21,6 +24,8 @@ md0 intentionally ships with **zero third-party runtime dependencies**.
 ## Security boundary
 
 The Go runtime itself can read the document chosen by the user and, for `md0 open`, bind a loopback HTTP server. **The md0/PURE document language cannot request filesystem access, network access, process spawning, environment variables, package imports, native code, or dynamic evaluation.** Those operations have no syntax and no evaluator primitive.
+
+The loopback viewer's capability tokens, CSP hashes, host/origin checks, request limits, and session store are also implemented only with Go's standard library. See `SECURITY.md` for the threat model.
 
 ## Runtime dependency proof
 
@@ -67,4 +72,4 @@ The `Prove zero third-party dependencies` CI step rejects the build if any of th
 - `go.mod` gains a `require` directive; or
 - `go mod tidy` changes `go.mod` or creates/changes `go.sum`.
 
-The proof is therefore executable and checked on every CI run, not just a documentation claim.
+The workflow actions themselves are pinned to immutable commit SHAs. The runtime-dependency proof is executable and checked on every CI run, not just a documentation claim.
