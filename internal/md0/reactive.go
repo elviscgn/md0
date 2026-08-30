@@ -167,11 +167,11 @@ func evalNodesIncremental(nodes []Node, r, previous *EvalResult, overrides map[s
 				if err != nil {
 					return fmt.Errorf("line %d: when: %w", x.Line, err)
 				}
-				var err error
-				active, err = value.AsBool()
-				if err != nil {
-					return fmt.Errorf("line %d: when must be boolean: %w", x.Line, err)
+				boolValue, boolErr := value.AsBool()
+				if boolErr != nil {
+					return fmt.Errorf("line %d: when must be boolean: %w", x.Line, boolErr)
 				}
+				active = boolValue
 			}
 			r.WhenByLine[x.Line] = active
 			if !active {
