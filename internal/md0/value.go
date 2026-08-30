@@ -42,9 +42,6 @@ func (v Value) String() string {
 	case NullKind:
 		return "null"
 	case NumberKind:
-		if math.Abs(v.Num-math.Round(v.Num)) < 1e-10 {
-			return strconv.FormatInt(int64(math.Round(v.Num)), 10)
-		}
 		return strconv.FormatFloat(v.Num, 'f', -1, 64)
 	case StringKind:
 		return v.Str
