@@ -5,6 +5,16 @@ import (
 	"strings"
 )
 
+const maxInterpolatedMarkdownBytes = 4 * 1024 * 1024
+
+func writeInterpolationBounded(out *strings.Builder, value string) error {
+	if len(value) > maxInterpolatedMarkdownBytes-out.Len() {
+		return fmt.Errorf("interpolated Markdown exceeds 4 MiB limit")
+	}
+	out.WriteString(value)
+	return nil
+}
+
 // transformMarkdownInterpolations visits {{ ... }} expressions only where
 // Markdown treats them as prose. Fenced code, inline code, and escaped opening
 // braces remain literal document text.
@@ -18,21 +28,30 @@ func transformMarkdownInterpolations(text string, replace func(expr, raw string)
 		hasNewline := len(part) > len(line)
 
 		if fence != nil {
-			out.WriteString(line)
+			if err := writeInterpolationBounded(&out, line); err != nil {
+				return "", err
+			}
 			if isFenceClose(line, *fence) {
 				fence = nil
 			}
 		} else if marker, run, _, ok := fenceMarker(line); ok {
-			out.WriteString(line)
+			if err := writeInterpolationBounded(&out, line); err != nil {
+				return "", err
+			}
 			fence = &markdownFence{marker: marker, length: run}
 		} else {
 			transformed, err := transformInlineInterpolations(line, replace)
 			if err != nil {
 				return "", err
 			}
-			out.WriteString(transformed)
+			if err := writeInterpolationBounded(&out, transformed); err != nil {
+				return "", err
+			}
 		}
 		if hasNewline {
+			if out.Len() >= maxInterpolatedMarkdownBytes {
+				return "", fmt.Errorf("interpolated Markdown exceeds 4 MiB limit")
+			}
 			out.WriteByte('\n')
 		}
 	}
@@ -81,7 +100,9 @@ func transformInlineInterpolations(line string, replace func(expr, raw string) (
 			if err != nil {
 				return "", err
 			}
-			out.WriteString(value)
+			if err := writeInterpolationBounded(&out, value); err != nil {
+				return "", err
+			}
 			i = end + 2
 			continue
 		}
