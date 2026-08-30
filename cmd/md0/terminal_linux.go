@@ -16,7 +16,6 @@ func enableRawTerminal(file *os.File) (func() error, error) {
 	}
 	raw := original
 	raw.Iflag &^= syscall.BRKINT | syscall.ICRNL | syscall.INPCK | syscall.ISTRIP | syscall.IXON
-	raw.Oflag &^= syscall.OPOST
 	raw.Cflag |= syscall.CS8
 	raw.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.IEXTEN | syscall.ISIG
 	raw.Cc[syscall.VMIN] = 1
