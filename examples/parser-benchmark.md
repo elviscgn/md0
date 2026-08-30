@@ -1,3 +1,5 @@
+md0: 0.1
+
 # Parser Benchmark
 
 This is a live computational report. The default timings below are illustrative values, not measured md0 benchmark results; replace them with your own benchmark output.

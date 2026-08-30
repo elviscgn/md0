@@ -15,7 +15,10 @@ var (
 	dataRE  = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s+(json|csv)$`)
 )
 
-const maxExpressionTokens = 512
+const (
+	LanguageVersion     = "0.1"
+	maxExpressionTokens = 512
+)
 
 type sourceLine struct {
 	no   int
@@ -148,6 +151,10 @@ func ParseFile(path string) (*Document, error) {
 	if err := s.Err(); err != nil {
 		return nil, err
 	}
+	version, declared, lines, err := extractLanguageDeclaration(lines)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	nodes, idx, err := parseNodes(lines, 0, false, 0)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -159,7 +166,7 @@ func ParseFile(path string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Document{Path: path, Source: string(data), Nodes: nodes}, nil
+	return &Document{Path: path, Source: string(data), LanguageVersion: version, LanguageDeclared: declared, Nodes: nodes}, nil
 }
 
 func ParseString(name, src string) (*Document, error) {
@@ -174,6 +181,10 @@ func ParseString(name, src string) (*Document, error) {
 	for i, t := range raw {
 		lines[i] = sourceLine{i + 1, t}
 	}
+	version, declared, lines, err := extractLanguageDeclaration(lines)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
 	nodes, idx, err := parseNodes(lines, 0, false, 0)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
@@ -181,7 +192,34 @@ func ParseString(name, src string) (*Document, error) {
 	if idx != len(lines) {
 		return nil, fmt.Errorf("%s: parser stopped early", name)
 	}
-	return &Document{Path: name, Source: src, Nodes: nodes}, nil
+	return &Document{Path: name, Source: src, LanguageVersion: version, LanguageDeclared: declared, Nodes: nodes}, nil
+}
+
+func extractLanguageDeclaration(lines []sourceLine) (string, bool, []sourceLine, error) {
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line.text)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "md0:") {
+			return LanguageVersion, false, lines, nil
+		}
+		version := strings.TrimSpace(strings.TrimPrefix(trimmed, "md0:"))
+		if version == "" {
+			return "", false, nil, fmt.Errorf("line %d: md0 language declaration requires a version", line.no)
+		}
+		if strings.ContainsAny(version, " \t") {
+			return "", false, nil, fmt.Errorf("line %d: invalid md0 language version %q", line.no, version)
+		}
+		if version != LanguageVersion {
+			return "", false, nil, fmt.Errorf("line %d: unsupported md0 language version %q (this runtime supports %s)", line.no, version, LanguageVersion)
+		}
+		filtered := make([]sourceLine, 0, len(lines)-1)
+		filtered = append(filtered, lines[:i]...)
+		filtered = append(filtered, lines[i+1:]...)
+		return version, true, filtered, nil
+	}
+	return LanguageVersion, false, lines, nil
 }
 
 func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Node, int, error) {

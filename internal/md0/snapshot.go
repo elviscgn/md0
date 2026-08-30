@@ -26,11 +26,12 @@ type SnapshotOutput struct {
 }
 
 type Snapshot struct {
-	Schema     string         `json:"schema"`
-	MD0Version string         `json:"md0_version"`
-	Source     SnapshotSource `json:"source"`
-	Values     map[string]any `json:"values"`
-	Output     SnapshotOutput `json:"output"`
+	Schema          string         `json:"schema"`
+	MD0Version      string         `json:"md0_version"`
+	LanguageVersion string         `json:"language_version"`
+	Source          SnapshotSource `json:"source"`
+	Values          map[string]any `json:"values"`
+	Output          SnapshotOutput `json:"output"`
 }
 
 func BuildSnapshot(doc *Document, result *EvalResult) (*Snapshot, error) {
@@ -39,8 +40,9 @@ func BuildSnapshot(doc *Document, result *EvalResult) (*Snapshot, error) {
 		return nil, err
 	}
 	return &Snapshot{
-		Schema:     SnapshotSchema,
-		MD0Version: RuntimeVersion,
+		Schema:          SnapshotSchema,
+		MD0Version:      RuntimeVersion,
+		LanguageVersion: doc.LanguageVersion,
 		Source: SnapshotSource{
 			Name:   filepath.Base(doc.Path),
 			SHA256: sourceSHA256(doc.Source),

@@ -1,3 +1,5 @@
+md0: 0.1
+
 # md0 Runtime Scale Snapshot
 
 This report dogfoods md0 using measurements produced by md0's own Go benchmark harness.

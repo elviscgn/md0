@@ -33,6 +33,11 @@ func Inspect(doc *Document) string {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Profile             md0/PURE\n")
+	languageMode := "implicit"
+	if doc.LanguageDeclared {
+		languageMode = "declared"
+	}
+	fmt.Fprintf(&b, "Language            %s (%s)\n", doc.LanguageVersion, languageMode)
 	fmt.Fprintf(&b, "Inputs              %d\nData attachments    %d\nCalculations        %d\nAssertions          %d\nCharts              %d\nTables              %d\nConditions          %d\n\n", counts["inputs"], counts["data"], counts["calculations"], counts["assertions"], counts["charts"], counts["tables"], counts["conditions"])
 
 	graph, err := BuildDependencyGraph(doc)

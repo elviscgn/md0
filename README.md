@@ -70,6 +70,7 @@ The artifact remains readable Markdown. md0 supplies computation when you want i
 - dependency-ordered computation while preserving document render order
 - incremental invalidation and fine-grained DOM patches
 - typed inputs, calculations, conditions, assertions, tables, and bar charts
+- durable values/snapshots, live source reload, and explicit CSV/JSON attachments
 - compiler-style source diagnostics
 - static HTML rendering and a hardened loopback-only interactive viewer
 - explicit resource limits, fuzzing, race tests, adversarial security tests, and 5,000-node scale benchmarks
@@ -78,15 +79,15 @@ The artifact remains readable Markdown. md0 supplies computation when you want i
 ## CLI
 
 ```text
-md0 validate document.md
-md0 eval document.md
-md0 render [-o report.html] document.md
-md0 open [-addr 127.0.0.1:8080] document.md
+md0 validate [--values values.json] [--data name=file] document.md
+md0 eval [--values values.json] [--data name=file] document.md
+md0 render [-o report.html] [--values values.json] [--data name=file] [--snapshot snapshot.json] document.md
+md0 open [-addr 127.0.0.1:8080] [--values values.json] [--data name=file] document.md
 md0 inspect document.md
 md0 version
 ```
 
-`render` creates a static HTML snapshot. `open` is intentionally loopback-only. Each browser page gets an isolated reactive session plus a cryptographically random capability token for `/render` requests.
+`render` creates static HTML and can record a durable snapshot containing input values, source hash, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
 
 ## md0/PURE
 
@@ -122,10 +123,13 @@ See [`SECURITY.md`](SECURITY.md) for the threat model and local-runtime defenses
 ## Language surface
 
 ```text
-@input  @calc  @show  @when  @assert  @table  @chart
+md0: 0.1
+@input  @data  @calc  @show  @when  @assert  @table  @chart
 ```
 
-Expressions support numeric/string/boolean literals, lists, arithmetic, comparisons, boolean operators, ternaries, and a deliberately small builtin set including `ceil`, `floor`, `round`, `abs`, `sqrt`, `min`, `max`, `len`, `sum`, and `avg`.
+Expressions support numeric/string/boolean literals, lists, arithmetic, comparisons, boolean operators, ternaries, and a deliberately small builtin set including `ceil`, `floor`, `round`, `abs`, `sqrt`, `min`, `max`, `len`, `sum`, `avg`, `get`, `columns`, `rows`, and `column`.
+
+The optional first-line `md0: 0.1` declaration locks a document to the 0.1 language contract; undeclared existing documents remain 0.1-compatible. See [`SPEC.md`](SPEC.md) for the canonical syntax, types, operators, execution rules, limits, and diagnostics.
 
 There are no general-purpose loops, user-defined functions, modules, imports, arbitrary event handlers, or JavaScript escape hatches.
 
@@ -161,6 +165,7 @@ Every push also runs formatting, `go vet`, unit tests, the adversarial security 
 - [`LIMITS.md`](LIMITS.md) — explicit resource ceilings
 - [`STDLIB.md`](STDLIB.md) — standard-library implementation log
 - [`DEMO.md`](DEMO.md) — five-minute demonstration path
+- [`SPEC.md`](SPEC.md) — canonical md0/PURE 0.1 language reference
 
 ## Current scope
 
