@@ -48,8 +48,8 @@ func usage() {
 
 Usage:
   md0 FILE
-  md0 edit [-addr 127.0.0.1:8080] [--values FILE] [--data NAME=FILE] FILE
-  md0 open [-addr 127.0.0.1:8080] [--values FILE] [--data NAME=FILE] FILE
+  md0 edit FILE
+  md0 open [-addr 127.0.0.1:8080] [--no-browser] [--values FILE] [--data NAME=FILE] FILE
   md0 validate [--values FILE] [--data NAME=FILE] FILE
   md0 eval [--values FILE] [--data NAME=FILE] FILE
   md0 render [-o FILE] [--values FILE] [--data NAME=FILE] [--snapshot FILE] FILE
@@ -211,6 +211,7 @@ func cmdRender(args []string) {
 func cmdOpen(args []string) {
 	fs := flag.NewFlagSet("open", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8080", "loopback listen address")
+	noBrowser := fs.Bool("no-browser", false, "do not open the browser automatically")
 	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
 	data := addDataFlags(fs)
 	fs.Parse(args)
@@ -228,7 +229,8 @@ func cmdOpen(args []string) {
 	cliUI.success("parsed and evaluated")
 	cliUI.action("http://" + *addr)
 	fmt.Fprintln(cliUI.out, cliUI.paint(ansiDim, "  Ctrl+C to stop"))
-	if err := core.ServeFileWithOptionsWithoutBanner(doc.Path, *addr, values, *data); err != nil {
+	scheduleBrowserOpen(*addr, *noBrowser)
+	if err := core.ServeFileWorkspaceWithOptions(doc.Path, *addr, values, *data); err != nil {
 		die(err)
 	}
 }

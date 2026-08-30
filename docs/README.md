@@ -8,7 +8,7 @@ md0 is a zero-third-party-dependency runtime for interactive Markdown that remai
 
 - [`FEATURES.md`](FEATURES.md) — user-facing reference for every supported feature with examples.
 - [`MATH_AND_PLOTS.md`](MATH_AND_PLOTS.md) — mathematical notation and reactive function plotting.
-- [`CLI_AND_EDITOR.md`](CLI_AND_EDITOR.md) — document launcher, terminal presentation, and built-in live authoring mode.
+- [`CLI_AND_EDITOR.md`](CLI_AND_EDITOR.md) — document launcher, terminal editor, terminal presentation, and optional browser source pane.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — parser → AST → dependency graph → evaluation → rendering → reactive updates.
 - [`AGENTS.md`](AGENTS.md) — repository guidance for AI coding agents and automated contributors.
 - [`../SPEC.md`](../SPEC.md) — canonical md0/PURE 0.1 language contract.
