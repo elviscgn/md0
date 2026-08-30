@@ -1,0 +1,4 @@
+$ go list -m all
+github.com/elviscgn/md0
+
+No third-party modules are present.

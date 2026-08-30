@@ -1,0 +1,15 @@
+Reproducible build check
+========================
+
+Commands:
+
+go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o /tmp/md0-a ./cmd/md0
+go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o /tmp/md0-b ./cmd/md0
+sha256sum /tmp/md0-a /tmp/md0-b
+
+Observed on Go 1.23.2 linux/amd64:
+
+9fae42a55616038195f1a06c0f326ece2c03cea55c06f55eec954967bf414363  /tmp/md0-a
+9fae42a55616038195f1a06c0f326ece2c03cea55c06f55eec954967bf414363  /tmp/md0-b
+
+The two artifacts were byte-identical in this environment.
