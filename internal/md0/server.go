@@ -250,7 +250,7 @@ func newHandlerForAddr(doc *Document, addr string) (http.Handler, error) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		frag, err := RenderFragment(doc, session.Snapshot())
+		frag, err := RenderFragmentBounded(doc, session.Snapshot())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -279,7 +279,7 @@ func newHandlerForAddr(doc *Document, addr string) (http.Handler, error) {
 			writePatchError(w, http.StatusBadRequest, err.Error(), inputNameFromError(err))
 			return
 		}
-		patches, err := RenderPatches(doc, res, stats)
+		patches, err := RenderPatchesBounded(doc, res, stats)
 		if err != nil {
 			writePatchError(w, http.StatusBadRequest, err.Error(), "")
 			return
