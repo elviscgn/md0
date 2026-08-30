@@ -3,7 +3,6 @@ package md0
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -124,6 +123,9 @@ func (s *runtimeSessionStore) create() (string, *ReactiveSession, error) {
 }
 
 func (s *runtimeSessionStore) get(token string) (*ReactiveSession, bool) {
+	if token == "" {
+		return nil, false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, ok := s.sessions[token]
@@ -193,8 +195,7 @@ func validRuntimeOrigin(origin, expectedPort string) bool {
 	if err != nil || u.Scheme != "http" || u.User != nil || u.Path != "" && u.Path != "/" || u.RawQuery != "" || u.Fragment != "" {
 		return false
 	}
-	host := u.Hostname()
-	if !loopbackHost(host) {
+	if !loopbackHost(u.Hostname()) {
 		return false
 	}
 	port := u.Port()
@@ -202,13 +203,6 @@ func validRuntimeOrigin(origin, expectedPort string) bool {
 		port = "80"
 	}
 	return port == expectedPort
-}
-
-func sameToken(got, want string) bool {
-	if len(got) != len(want) || len(want) == 0 {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 func decodeRenderInputs(w http.ResponseWriter, r *http.Request) (map[string]string, error) {
@@ -256,8 +250,7 @@ func newHandlerForAddr(doc *Document, addr string) (http.Handler, error) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		res := session.Snapshot()
-		frag, err := RenderFragment(doc, res)
+		frag, err := RenderFragment(doc, session.Snapshot())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -267,9 +260,8 @@ func newHandlerForAddr(doc *Document, addr string) (http.Handler, error) {
 	})
 	mux.HandleFunc("POST /render", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		token := r.Header.Get("X-MD0-Token")
-		session, ok := store.get(token)
-		if !ok || !sameToken(token, token) {
+		session, ok := store.get(r.Header.Get("X-MD0-Token"))
+		if !ok {
 			writePatchError(w, http.StatusForbidden, "invalid or expired runtime token", "")
 			return
 		}
