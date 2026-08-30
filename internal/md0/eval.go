@@ -2,6 +2,7 @@ package md0
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -214,9 +215,13 @@ func parseInputValue(typ, raw string) (Value, error) {
 
 func validateInputType(typ string, v Value) error {
 	switch strings.ToLower(typ) {
-	case "number", "percent", "currency", "integer", "duration":
+	case "number", "percent", "currency", "duration":
 		if v.Kind != NumberKind {
 			return fmt.Errorf("default must evaluate to number")
+		}
+	case "integer":
+		if v.Kind != NumberKind || math.IsNaN(v.Num) || math.IsInf(v.Num, 0) || math.Trunc(v.Num) != v.Num || v.Num < -math.Ldexp(1, 63) || v.Num >= math.Ldexp(1, 63) {
+			return fmt.Errorf("default must evaluate to integer")
 		}
 	case "boolean", "bool":
 		if v.Kind != BoolKind {
