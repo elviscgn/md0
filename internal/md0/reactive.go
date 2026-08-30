@@ -17,6 +17,7 @@ type ReactiveSession struct {
 	plan      *EvaluationPlan
 	result    *EvalResult
 	overrides map[string]string
+	rendered  map[string]string
 }
 
 func NewReactiveSession(doc *Document) (*ReactiveSession, error) {
@@ -36,14 +37,15 @@ func NewReactiveSessionWithValues(doc *Document, overrides map[string]string) (*
 		doc:       doc,
 		plan:      plan,
 		result:    result,
-		overrides: renderedInputSnapshot(doc.Nodes, result),
+		overrides: copyStringMap(overrides),
+		rendered:  renderedInputSnapshot(doc.Nodes, result),
 	}, nil
 }
 
 func (s *ReactiveSession) Values() map[string]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return copyStringMap(s.overrides)
+	return copyStringMap(s.rendered)
 }
 
 func (s *ReactiveSession) Reset() (*EvalResult, error) {
@@ -54,7 +56,8 @@ func (s *ReactiveSession) Reset() (*EvalResult, error) {
 		return nil, err
 	}
 	s.result = result
-	s.overrides = renderedInputSnapshot(s.doc.Nodes, result)
+	s.overrides = map[string]string{}
+	s.rendered = renderedInputSnapshot(s.doc.Nodes, result)
 	return cloneEvalResult(result), nil
 }
 
@@ -68,35 +71,52 @@ func (s *ReactiveSession) Graph() *DependencyGraph {
 	return s.plan.Graph
 }
 
-func (s *ReactiveSession) Update(overrides map[string]string) (*EvalResult, IncrementalStats, error) {
+func (s *ReactiveSession) Update(values map[string]string) (*EvalResult, IncrementalStats, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if overrides == nil {
-		overrides = map[string]string{}
+	if values == nil {
+		values = map[string]string{}
 	}
-	for name := range overrides {
+	for name := range values {
 		if !s.plan.Graph.IsInputSymbol(name) {
 			return nil, IncrementalStats{}, fmt.Errorf("unknown input override %q", name)
 		}
 	}
 
-	changed := changedOverrides(s.overrides, overrides)
+	// The browser posts the complete visible input state. A displayed value is
+	// not necessarily an explicit override: it may have come from an input
+	// default expression. Compare against what was last rendered so only actual
+	// user edits become persistent overrides.
+	changed := changedRenderedValues(s.rendered, values)
 	stats := IncrementalStats{Changed: changed}
 	if len(changed) == 0 {
 		return cloneEvalResult(s.result), stats, nil
 	}
 
+	nextOverrides := copyStringMap(s.overrides)
+	for _, name := range changed {
+		nextOverrides[name] = values[name]
+	}
+
 	affected := s.plan.Graph.AffectedBySymbols(changed)
 	stats.Recomputed = s.plan.OrderedAffected(affected)
 	next := cloneEvalResult(s.result)
-	if err := evalPlanIncremental(s.plan, next, overrides, affected); err != nil {
+	if err := evalPlanIncremental(s.plan, next, nextOverrides, affected); err != nil {
 		return nil, IncrementalStats{}, err
 	}
 	rebuildAssertions(s.doc.Nodes, next)
 
 	s.result = next
-	s.overrides = copyStringMap(overrides)
+	s.overrides = nextOverrides
+	s.rendered = renderedInputSnapshot(s.doc.Nodes, next)
+	// RenderPatches deliberately does not replace an input that the user just
+	// edited, so retain its exact posted spelling as the browser's current state.
+	for _, name := range changed {
+		if raw, ok := values[name]; ok {
+			s.rendered[name] = raw
+		}
+	}
 	return cloneEvalResult(next), stats, nil
 }
 
@@ -136,6 +156,17 @@ func renderedInputSnapshot(nodes []Node, result *EvalResult) map[string]string {
 	}
 	walk(nodes)
 	return out
+}
+
+func changedRenderedValues(previous, posted map[string]string) []string {
+	changed := []string{}
+	for key, next := range posted {
+		if current, ok := previous[key]; !ok || current != next {
+			changed = append(changed, key)
+		}
+	}
+	sort.Strings(changed)
+	return changed
 }
 
 func changedOverrides(previous, next map[string]string) []string {
