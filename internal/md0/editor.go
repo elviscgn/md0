@@ -240,8 +240,8 @@ func newResponseRecorder() *responseRecorder {
 	return &responseRecorder{header: make(http.Header), status: http.StatusOK}
 }
 
-func (r *responseRecorder) Header() http.Header { return r.header }
-func (r *responseRecorder) WriteHeader(status int) { r.status = status }
+func (r *responseRecorder) Header() http.Header            { return r.header }
+func (r *responseRecorder) WriteHeader(status int)         { r.status = status }
 func (r *responseRecorder) Write(data []byte) (int, error) { return r.body.Write(data) }
 
 func ServeFileEditorWithOptions(path, addr string, initialValues map[string]string, dataSpecs []string) error {
