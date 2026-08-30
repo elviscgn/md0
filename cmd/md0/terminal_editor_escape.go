@@ -23,7 +23,8 @@ func runTerminalEditorUXEscape(path string) error {
 		return errors.New("document exceeds 2 MiB limit")
 	}
 
-	editor := &terminalEditorUX{terminalEditor: newTerminalEditor(path, string(data), newTerminalUI(os.Stdout))}
+	editor := newTerminalEditorSession(path, string(data), newTerminalUI(os.Stdout))
+	defer editor.close()
 	restore, err := enableRawTerminal(os.Stdin)
 	if err != nil {
 		return fmt.Errorf("terminal editor could not enable interactive input: %w", err)
@@ -36,12 +37,12 @@ func runTerminalEditorUXEscape(path string) error {
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		editor.drawPolishedUX("exit")
-		event, err := readEditorEvent(reader)
+		editor.draw("exit")
+		event, err := readEditorSessionEvent(reader)
 		if err != nil {
 			return err
 		}
-		quit, err := editor.handleUXEscape(event)
+		quit, err := editor.handle(event)
 		if err != nil {
 			editor.status = err.Error()
 			editor.statusError = true
@@ -52,6 +53,8 @@ func runTerminalEditorUXEscape(path string) error {
 	}
 }
 
+// handleUXEscape remains for the lower-level editor tests and callers that do
+// not opt into the richer session layer.
 func (e *terminalEditorUX) handleUXEscape(event editorEvent) (bool, error) {
 	if event.key != editorKeyEscape || e.completionOn {
 		return e.handleUX(event)
