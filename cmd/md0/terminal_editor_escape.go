@@ -36,7 +36,7 @@ func runTerminalEditorUXEscape(path string) error {
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		editor.drawUX()
+		editor.drawPolishedUX("exit")
 		event, err := readEditorEvent(reader)
 		if err != nil {
 			return err
