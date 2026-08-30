@@ -12,7 +12,7 @@
 
 </div>
 
-md0 is a zero-dependency runtime for **interactive Markdown that stays a document**: typed inputs, calculations, reactive prose, conditions, tables, charts, and assertions — without giving the document arbitrary code execution.
+md0 is a zero-dependency runtime for **interactive Markdown that stays a document**: typed inputs, calculations, reactive prose, conditions, tables, charts, mathematical notation, function plots, and assertions — without giving the document arbitrary code execution.
 
 > **Documents should be able to compute without becoming software.**
 
@@ -72,6 +72,14 @@ brew install --HEAD ./packaging/homebrew/md0.rb
 
 ## Author, explore, save, share
 
+For interactive work, open the persistent document app and move between editing, viewing, rendering, inspection, and validation without restarting md0:
+
+```bash
+md0 report.md
+```
+
+Explicit subcommands remain available for automation and direct entry into one workflow:
+
 ```bash
 # Explore with reviewed values and data.
 md0 open --values values.json --data services=services.csv report.md
@@ -93,8 +101,10 @@ Data is always explicit: the document declares `@data services csv` or `@data as
 - [`examples/decision-record.md`](examples/decision-record.md) — engineering option and budget decision
 - [`examples/incident-report.md`](examples/incident-report.md) — reliability report backed by explicit CSV measurements
 - [`examples/scenario-model.md`](examples/scenario-model.md) — budget and growth model backed by reviewed JSON assumptions
+- [`examples/math-playground.md`](examples/math-playground.md) — native MathML plus reactive SVG function plots
 
 ```bash
+md0 examples/math-playground.md
 md0 open examples/decision-record.md
 md0 open --data services=examples/data/incident-services.csv examples/incident-report.md
 md0 open --data assumptions=examples/data/scenario-assumptions.json examples/scenario-model.md
@@ -120,6 +130,8 @@ md0 open --data assumptions=examples/data/scenario-assumptions.json examples/sce
 - dependency-ordered computation while preserving document render order
 - incremental invalidation and fine-grained DOM patches
 - typed inputs, calculations, conditions, assertions, tables, and bar charts
+- native MathML rendering and bounded reactive SVG function plots
+- persistent zero-dependency terminal document app with syntax-aware source editing
 - durable values/snapshots, live source reload, and explicit CSV/JSON attachments
 - compiler-style source diagnostics
 - static HTML rendering and a hardened loopback-only interactive viewer
@@ -129,6 +141,7 @@ md0 open --data assumptions=examples/data/scenario-assumptions.json examples/sce
 ## CLI
 
 ```text
+md0 document.md
 md0 validate [--values values.json] [--data name=file] document.md
 md0 eval [--values values.json] [--data name=file] document.md
 md0 render [-o report.html] [--values values.json] [--data name=file] [--snapshot snapshot.json] document.md
@@ -138,7 +151,9 @@ md0 inspect document.md
 md0 version
 ```
 
-`edit` opens a full-screen terminal source editor with line numbers, md0 syntax highlighting, and completion; `Ctrl+S` saves and `Ctrl+Q` quits. `render` creates static HTML and can record a durable snapshot containing input values, source and attachment hashes, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Use Settings → Edit source inside that viewer for optional browser editing. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
+Bare `md0 document.md` is the primary interactive experience: it opens one persistent terminal app. Press `e` to enter the editor, `Esc` to return home, `o` to start or reopen the live viewer, `r` to render, `i` to inspect, `v` to validate, and `q`/`Esc` on the home screen to exit md0. The editor has line numbers, md0 syntax highlighting, cursor-local completion, snippets, and `Ctrl+S` saving; with unsaved edits, the first `Esc` warns and the second discards. `md0 edit` remains a direct editor shortcut.
+
+`render` creates static HTML and can record a durable snapshot containing input values, source and attachment hashes, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Use Settings → Edit source inside that viewer for optional browser editing. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
 
 ## md0/PURE
 
@@ -179,6 +194,8 @@ md0: 0.1
 ```
 
 Expressions support numeric/string/boolean literals, lists, arithmetic, comparisons, boolean operators, ternaries, and a deliberately small builtin set including `ceil`, `floor`, `round`, `abs`, `sqrt`, `min`, `max`, `len`, `sum`, `avg`, `get`, `columns`, `rows`, and `column`.
+
+Markdown rendering also supports a bounded LaTeX-like `$...$` / `$$...$$` math surface rendered with native MathML, plus fenced `plot` blocks rendered as bounded native SVG. These are rendering extensions and do not add document authority.
 
 The optional first-line `md0: 0.1` declaration locks a document to the 0.1 language contract; undeclared existing documents remain 0.1-compatible. See [`SPEC.md`](SPEC.md) for the canonical syntax, types, operators, execution rules, limits, and diagnostics.
 
