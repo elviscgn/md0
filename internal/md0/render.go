@@ -73,7 +73,7 @@ func renderNodeRegion(b *strings.Builder, n Node, r *EvalResult) error {
 
 	switch x := n.(type) {
 	case MarkdownNode:
-		text, err := interpolate(x.Text, r.Env)
+		text, err := interpolateMarkdown(x.Text, r.Env)
 		if err != nil {
 			return fmt.Errorf("line %d: interpolation: %w", x.Line, err)
 		}
@@ -183,8 +183,6 @@ func RenderPatches(doc *Document, r *EvalResult, stats IncrementalStats) ([]DOMP
 			id := dependencyNodeID(n)
 			patchThis := affected[id] && isRenderableNode(n)
 			if input, ok := n.(InputNode); ok && changedInputs[input.Name] {
-				// The browser already owns the value being typed. Replacing this
-				// region would unnecessarily destroy focus and selection.
 				patchThis = false
 			}
 
@@ -195,8 +193,6 @@ func RenderPatches(doc *Document, r *EvalResult, stats IncrementalStats) ([]DOMP
 				}
 				patches = append(patches, DOMPatch{NodeID: id, DOMID: domNodeID(id), HTML: markup})
 				if _, structural := n.(WhenNode); structural {
-					// Replacing a conditional region already replaces every child.
-					// Emitting child patches as well would target stale DOM nodes.
 					continue
 				}
 			}

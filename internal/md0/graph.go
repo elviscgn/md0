@@ -265,27 +265,7 @@ func ExprDependencies(expr Expr) ([]string, error) {
 }
 
 func markdownDependencies(text string) ([]string, error) {
-	set := map[string]struct{}{}
-	matches := interpRE.FindAllStringSubmatch(text, -1)
-	for _, match := range matches {
-		expr, err := parseExprBounded(match[1])
-		if err != nil {
-			return nil, err
-		}
-		deps, err := ExprDependencies(expr)
-		if err != nil {
-			return nil, err
-		}
-		for _, dep := range deps {
-			set[dep] = struct{}{}
-		}
-	}
-	out := make([]string, 0, len(set))
-	for dep := range set {
-		out = append(out, dep)
-	}
-	sort.Strings(out)
-	return out, nil
+	return markdownInterpolationDependencies(text)
 }
 
 func uniqueSorted(values []string) []string {
