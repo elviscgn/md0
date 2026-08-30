@@ -23,7 +23,7 @@ Change amplitude, frequency, or phase above. The equation and SVG curve update f
 title = Reactive wave and quadratic
 y = {{ amplitude }} * sin({{ frequency }} * x + {{ phase }})
 label = wave
-y2 = {{ curvature }} * x^2 - 1
+y2 = {{ curvature }} * pow(x, 2) - 1
 label2 = quadratic
 x = [-2*pi, 2*pi]
 samples = 420
