@@ -115,10 +115,9 @@ Result: **{{ doubled }}**`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/render", strings.NewReader(`{"a":"3"}`))
-	req.Header.Set("content-type", "application/json")
+	token := runtimeTokenForHandler(t, handler)
 	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, req)
+	handler.ServeHTTP(res, runtimeJSONRequest(token, `{"a":"3"}`))
 	if res.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
