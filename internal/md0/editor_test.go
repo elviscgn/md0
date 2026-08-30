@@ -81,6 +81,49 @@ func TestEditorDraftIsInMemoryAndReactive(t *testing.T) {
 	}
 }
 
+func TestEditorRejectsWrongContentTypesAndTrailingDraftJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "edit.md")
+	if err := os.WriteFile(path, []byte("md0: 0.1\n# Test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := newEditorHandler(path, "127.0.0.1:8080", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	editor := handler.(*editorHandler)
+
+	wrongDraft := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/editor/draft", strings.NewReader(`{"source":"md0: 0.1"}`))
+	wrongDraft.Host = "127.0.0.1:8080"
+	wrongDraft.Header.Set("Content-Type", "text/plain")
+	wrongDraft.Header.Set("X-MD0-Editor-Token", editor.token)
+	wrongDraftRR := httptest.NewRecorder()
+	handler.ServeHTTP(wrongDraftRR, wrongDraft)
+	if wrongDraftRR.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("wrong draft content type status=%d", wrongDraftRR.Code)
+	}
+
+	trailing := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/editor/draft", strings.NewReader(`{"source":"md0: 0.1\n# A\n","values":{}} {}`))
+	trailing.Host = "127.0.0.1:8080"
+	trailing.Header.Set("Content-Type", "application/json")
+	trailing.Header.Set("X-MD0-Editor-Token", editor.token)
+	trailingRR := httptest.NewRecorder()
+	handler.ServeHTTP(trailingRR, trailing)
+	if trailingRR.Code != http.StatusBadRequest {
+		t.Fatalf("trailing draft JSON status=%d", trailingRR.Code)
+	}
+
+	wrongSave := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/editor/source", strings.NewReader("md0: 0.1\n"))
+	wrongSave.Host = "127.0.0.1:8080"
+	wrongSave.Header.Set("Content-Type", "application/json")
+	wrongSave.Header.Set("X-MD0-Editor-Token", editor.token)
+	wrongSaveRR := httptest.NewRecorder()
+	handler.ServeHTTP(wrongSaveRR, wrongSave)
+	if wrongSaveRR.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("wrong save content type status=%d", wrongSaveRR.Code)
+	}
+}
+
 func TestEditorSaveRequiresCapabilityAndWritesOpenedFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "edit.md")
@@ -96,6 +139,7 @@ func TestEditorSaveRequiresCapabilityAndWritesOpenedFile(t *testing.T) {
 
 	bad := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/editor/source", strings.NewReader(newSource))
 	bad.Host = "127.0.0.1:8080"
+	bad.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	bad.Header.Set("X-MD0-Editor-Token", "wrong")
 	badRR := httptest.NewRecorder()
 	handler.ServeHTTP(badRR, bad)
@@ -105,6 +149,7 @@ func TestEditorSaveRequiresCapabilityAndWritesOpenedFile(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/editor/source", strings.NewReader(newSource))
 	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	req.Header.Set("X-MD0-Editor-Token", editor.token)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
