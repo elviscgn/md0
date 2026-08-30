@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var (
@@ -137,7 +138,11 @@ func ParseFile(path string) (*Document, error) {
 	n := 0
 	for s.Scan() {
 		n++
-		lines = append(lines, sourceLine{n, s.Text()})
+		text := s.Text()
+		if !utf8.ValidString(text) {
+			return nil, fmt.Errorf("%s: line %d: document is not valid UTF-8", path, n)
+		}
+		lines = append(lines, sourceLine{n, text})
 	}
 	if err := s.Err(); err != nil {
 		return nil, err
@@ -155,6 +160,9 @@ func ParseFile(path string) (*Document, error) {
 func ParseString(name, src string) (*Document, error) {
 	if len(src) > 2*1024*1024 {
 		return nil, fmt.Errorf("%s: document exceeds 2 MiB limit", name)
+	}
+	if !utf8.ValidString(src) {
+		return nil, fmt.Errorf("%s: document is not valid UTF-8", name)
 	}
 	raw := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
 	lines := make([]sourceLine, len(raw))
