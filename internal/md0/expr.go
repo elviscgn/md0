@@ -8,6 +8,8 @@ import (
 	"unicode"
 )
 
+const maxEvaluatedStringBytes = 1 << 20
+
 type Expr interface {
 	Eval(env map[string]Value) (Value, error)
 }
@@ -123,7 +125,11 @@ func (e binaryExpr) Eval(env map[string]Value) (Value, error) {
 		return Boolean(!ValuesEqual(l, r)), nil
 	case "+":
 		if l.Kind == StringKind || r.Kind == StringKind {
-			return String(l.String() + r.String()), nil
+			left, right := l.String(), r.String()
+			if len(left) > maxEvaluatedStringBytes || len(right) > maxEvaluatedStringBytes-len(left) {
+				return Null(), fmt.Errorf("string result exceeds 1 MiB limit")
+			}
+			return String(left + right), nil
 		}
 		a, err := l.AsNumber()
 		if err != nil {
@@ -458,6 +464,7 @@ func ParseExpr(src string) (Expr, error) {
 	}
 	return e, nil
 }
+
 func (p *exprParser) advance() error {
 	t, err := p.lex.next()
 	if err != nil {
@@ -466,19 +473,23 @@ func (p *exprParser) advance() error {
 	p.cur = t
 	return nil
 }
+
 func (p *exprParser) consume(t tokenType, text string) error {
 	if p.cur.typ != t || text != "" && p.cur.text != text {
 		return fmt.Errorf("expected %q at %d", text, p.cur.pos+1)
 	}
 	return p.advance()
 }
+
 func (p *exprParser) parseTernary() (Expr, error) {
 	e, err := p.parseOr()
 	if err != nil {
 		return nil, err
 	}
 	if p.cur.typ == tokQuestion {
-		p.advance()
+		if err := p.advance(); err != nil {
+			return nil, err
+		}
 		yes, err := p.parseTernary()
 		if err != nil {
 			return nil, err
@@ -494,6 +505,7 @@ func (p *exprParser) parseTernary() (Expr, error) {
 	}
 	return e, nil
 }
+
 func (p *exprParser) parseOr() (Expr, error) {
 	return p.parseBinary(p.parseAnd, map[string]bool{"||": true})
 }
@@ -512,6 +524,7 @@ func (p *exprParser) parseTerm() (Expr, error) {
 func (p *exprParser) parseFactor() (Expr, error) {
 	return p.parseBinary(p.parseUnary, map[string]bool{"*": true, "/": true, "%": true})
 }
+
 func (p *exprParser) parseBinary(next func() (Expr, error), ops map[string]bool) (Expr, error) {
 	e, err := next()
 	if err != nil {
@@ -519,7 +532,9 @@ func (p *exprParser) parseBinary(next func() (Expr, error), ops map[string]bool)
 	}
 	for p.cur.typ == tokOp && ops[p.cur.text] {
 		op := p.cur.text
-		p.advance()
+		if err := p.advance(); err != nil {
+			return nil, err
+		}
 		r, err := next()
 		if err != nil {
 			return nil, err
@@ -528,10 +543,13 @@ func (p *exprParser) parseBinary(next func() (Expr, error), ops map[string]bool)
 	}
 	return e, nil
 }
+
 func (p *exprParser) parseUnary() (Expr, error) {
 	if p.cur.typ == tokOp && (p.cur.text == "!" || p.cur.text == "-" || p.cur.text == "+") {
 		op := p.cur.text
-		p.advance()
+		if err := p.advance(); err != nil {
+			return nil, err
+		}
 		r, err := p.parseUnary()
 		if err != nil {
 			return nil, err
@@ -540,6 +558,7 @@ func (p *exprParser) parseUnary() (Expr, error) {
 	}
 	return p.parsePrimary()
 }
+
 func (p *exprParser) enter() error {
 	p.depth++
 	if p.depth > 128 {
@@ -553,17 +572,23 @@ func (p *exprParser) parsePrimary() (Expr, error) {
 	t := p.cur
 	switch t.typ {
 	case tokNumber:
-		p.advance()
+		if err := p.advance(); err != nil {
+			return nil, err
+		}
 		n, err := strconv.ParseFloat(t.text, 64)
 		if err != nil {
 			return nil, fmt.Errorf("invalid number %q", t.text)
 		}
 		return literalExpr{Number(n)}, nil
 	case tokString:
-		p.advance()
+		if err := p.advance(); err != nil {
+			return nil, err
+		}
 		return literalExpr{String(t.text)}, nil
 	case tokIdent:
-		p.advance()
+		if err := p.advance(); err != nil {
+			return nil, err
+		}
 		if t.text == "true" {
 			return literalExpr{Boolean(true)}, nil
 		}
@@ -578,7 +603,9 @@ func (p *exprParser) parsePrimary() (Expr, error) {
 				return nil, err
 			}
 			defer p.leave()
-			p.advance()
+			if err := p.advance(); err != nil {
+				return nil, err
+			}
 			args := []Expr{}
 			if p.cur.typ != tokRParen {
 				for {
@@ -593,7 +620,9 @@ func (p *exprParser) parsePrimary() (Expr, error) {
 					if p.cur.typ != tokComma {
 						break
 					}
-					p.advance()
+					if err := p.advance(); err != nil {
+						return nil, err
+					}
 				}
 			}
 			if err := p.consume(tokRParen, ")"); err != nil {
@@ -607,7 +636,9 @@ func (p *exprParser) parsePrimary() (Expr, error) {
 			return nil, err
 		}
 		defer p.leave()
-		p.advance()
+		if err := p.advance(); err != nil {
+			return nil, err
+		}
 		e, err := p.parseTernary()
 		if err != nil {
 			return nil, err
@@ -621,7 +652,9 @@ func (p *exprParser) parsePrimary() (Expr, error) {
 			return nil, err
 		}
 		defer p.leave()
-		p.advance()
+		if err := p.advance(); err != nil {
+			return nil, err
+		}
 		items := []Expr{}
 		if p.cur.typ != tokRBracket {
 			for {
@@ -636,7 +669,9 @@ func (p *exprParser) parsePrimary() (Expr, error) {
 				if p.cur.typ != tokComma {
 					break
 				}
-				p.advance()
+				if err := p.advance(); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if err := p.consume(tokRBracket, "]"); err != nil {

@@ -14,7 +14,7 @@ The host operator and other processes already running as the same local user are
 
 md0/PURE keeps dangerous capabilities absent from the document language rather than granting them and attempting to filter them later. Documents must be valid UTF-8, expressions and block depth are bounded, live string inputs are capped, and chart/table shapes have explicit ceilings.
 
-Interpolation and rendered responses also have independent size ceilings to prevent a small live input from being repeated into unbounded output. See `LIMITS.md` for the complete current bounds and `PERFORMANCE.md` for the measured scale harness.
+The expression parser propagates lexer failures at every token advance rather than continuing from stale parser state. String-producing expressions are capped at 1 MiB per computed value, and interpolation/rendered responses have independent size ceilings. Together these prevent malformed expressions and repeated string calculations from becoming unbounded parser/evaluator work. See `LIMITS.md` for the complete current bounds and `PERFORMANCE.md` for the measured scale harness.
 
 ## Browser rendering boundary
 
@@ -54,7 +54,8 @@ The security corpus exercises security-sensitive behavior including:
 - wrong content types, ambiguous JSON, null and oversized request bodies
 - bad-request followed by valid-request state recovery
 - invalid UTF-8 rejection
-- document, expression-token, block-depth, string-input, interpolation-output, chart, and table limits
+- direct expression-parser lexer-error propagation
+- document, expression-token, expression-nesting, block-depth, string-input, computed-string, interpolation-output, chart, and table limits
 
 CI runs this corpus explicitly in addition to the full unit suite, race detector, parser/evaluator fuzzing, 5,000-node scale benchmarks, zero-third-party-module proof, reproducible-build check, and cross-platform tests.
 

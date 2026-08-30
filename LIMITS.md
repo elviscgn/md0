@@ -8,8 +8,10 @@ md0/PURE intentionally bounds document execution and local-runtime I/O so malfor
 | Document encoding | valid UTF-8 | parser boundary |
 | File-backed line size | 256 KiB | `bufio.Scanner` maximum buffer |
 | Expression size | 512 lexer tokens | bounded expression preflight |
+| Expression nesting | 128 levels | expression parser |
 | Nested block depth | 64 levels | recursive block parser |
 | Live string/text input | 16 KiB | input validator |
+| Computed string value | 1 MiB | expression evaluator |
 | Interpolated Markdown region | 4 MiB | interpolation transform |
 | Rendered document / patch response | 16 MiB | bounded output wrappers |
 | Bar-chart values | 128 | chart validator |
@@ -23,9 +25,9 @@ md0/PURE intentionally bounds document execution and local-runtime I/O so malfor
 
 The 2 MiB document bound applies before parsing, and documents must be valid UTF-8. `ParseFile` also reads through a scanner capped at 256 KiB for an individual line.
 
-Every directive expression is lexed through a bounded preflight before the recursive-descent expression parser runs. More than 512 tokens is rejected before expression parsing. Nested md0 block structure is capped at 64 levels.
+Every directive expression is lexed through a bounded preflight before the recursive-descent expression parser runs. More than 512 tokens is rejected before expression parsing, and recursive expression nesting is capped at 128 levels. Nested md0 block structure is capped at 64 levels.
 
-Live string inputs are capped at 16 KiB. Interpolation is independently bounded at 4 MiB per Markdown transform, and user-visible render paths cap a complete document or patch response at 16 MiB. These are separate guards against output amplification.
+Live string inputs are capped at 16 KiB. String-producing expressions cannot create a value larger than 1 MiB, interpolation is independently bounded at 4 MiB per Markdown transform, and user-visible render paths cap a complete document or patch response at 16 MiB. These are separate guards against evaluator and output amplification.
 
 Charts and tables have output-shape limits because they can multiply rendered DOM/SVG work even when their source expressions are small.
 
