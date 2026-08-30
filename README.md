@@ -18,6 +18,8 @@ md0 is a zero-dependency runtime for **interactive Markdown that stays a documen
 
 ## Try the flagship example
 
+Building from source requires Go 1.27 or newer.
+
 ```bash
 make build
 ./bin/md0 open examples/parser-benchmark.md

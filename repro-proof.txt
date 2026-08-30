@@ -3,14 +3,14 @@ Reproducible build check
 
 Commands:
 
-go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o /tmp/md0-a ./cmd/md0
-go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o /tmp/md0-b ./cmd/md0
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o /tmp/md0-a ./cmd/md0
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o /tmp/md0-b ./cmd/md0
 cmp /tmp/md0-a /tmp/md0-b
 sha256sum /tmp/md0-a /tmp/md0-b
 
-Observed in GitHub Actions on Go 1.23.12 linux/amd64:
+Verified with Go 1.27.0 using linux/amd64 cross-builds:
 
-817085bb95ee1ba33f4c719c4ec2846033f2fb405e706b706cca7133dd865b15  /tmp/md0-a
-817085bb95ee1ba33f4c719c4ec2846033f2fb405e706b706cca7133dd865b15  /tmp/md0-b
+396a4d90eac00acbf3c5fe325716cdcc90d2e2883602a7270fd6599e08370599  /tmp/md0-a
+396a4d90eac00acbf3c5fe325716cdcc90d2e2883602a7270fd6599e08370599  /tmp/md0-b
 
-The two v0.1 artifacts were byte-identical in that environment. CI repeats this check on every main-branch run; this file is a recorded snapshot, not a substitute for the live CI result.
+The two v0.1 artifacts were byte-identical for that target. CI repeats a native byte-for-byte check on every main-branch run; this file is a recorded snapshot, not a substitute for the live CI result.
