@@ -2,19 +2,70 @@ package md0
 
 import (
 	"html"
-	"regexp"
 	"strings"
 )
 
-var (
-	boldRE = regexp.MustCompile(`\*\*([^*]+)\*\*`)
-	codeRE = regexp.MustCompile("`([^`]+)`")
-)
-
 func renderInline(s string) string {
-	s = html.EscapeString(s)
-	s = codeRE.ReplaceAllString(s, "<code>$1</code>")
-	s = boldRE.ReplaceAllString(s, "<strong>$1</strong>")
+	var out strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] == '`' {
+			run := 1
+			for i+run < len(s) && s[i+run] == '`' {
+				run++
+			}
+			if closeAt := matchingBacktickRun(s, i+run, run); closeAt >= 0 {
+				content := normalizeCodeSpan(s[i+run : closeAt])
+				out.WriteString("<code>")
+				out.WriteString(html.EscapeString(content))
+				out.WriteString("</code>")
+				i = closeAt + run
+				continue
+			}
+			out.WriteString(html.EscapeString(s[i : i+run]))
+			i += run
+			continue
+		}
+
+		if i+1 < len(s) && s[i] == '*' && s[i+1] == '*' {
+			if rel := strings.Index(s[i+2:], "**"); rel >= 0 {
+				closeAt := i + 2 + rel
+				if closeAt > i+2 {
+					out.WriteString("<strong>")
+					out.WriteString(renderInline(s[i+2 : closeAt]))
+					out.WriteString("</strong>")
+					i = closeAt + 2
+					continue
+				}
+			}
+		}
+
+		start := i
+		for i < len(s) {
+			if s[i] == '`' || i+1 < len(s) && s[i] == '*' && s[i+1] == '*' {
+				break
+			}
+			i++
+		}
+		if start == i {
+			out.WriteString(html.EscapeString(s[i : i+1]))
+			i++
+			continue
+		}
+		out.WriteString(html.EscapeString(s[start:i]))
+	}
+	return out.String()
+}
+
+func normalizeCodeSpan(s string) string {
+	// CommonMark code spans collapse line endings to spaces. renderInline is
+	// currently line-oriented, but keeping the normalization here makes the
+	// rule explicit and correct if multi-line spans are introduced later.
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) >= 2 && s[0] == ' ' && s[len(s)-1] == ' ' && strings.Trim(s, " ") != "" {
+		s = s[1 : len(s)-1]
+	}
 	return s
 }
 
