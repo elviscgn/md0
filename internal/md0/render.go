@@ -209,6 +209,7 @@ func RenderPatches(doc *Document, r *EvalResult, stats IncrementalStats) ([]DOMP
 				if err := walk(when.Nodes); err != nil {
 					return err
 				}
+			}
 		}
 		return nil
 	}
@@ -414,11 +415,7 @@ func RenderInteractivePage(title, fragment string) string {
 	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>` + html.EscapeString(title) + ` · md0</title><style>` + pageCSS + `</style></head><body><main id="md0-document">` + fragment + `</main><script>` + pageJS + `</script></body></html>`
 }
 
-// pageCSS is the shared document presentation used by static renders, snapshots,
-// and the live viewer. Viewer-only chrome is layered on separately by browser.go.
-const pageCSS = runtimeStatusCSS + `
-.md0-input>input:not([type="checkbox"]){justify-self:stretch;width:100%;height:42px;padding:0 12px;border:1px solid var(--field-border);border-radius:10px;background:var(--field);color:var(--ink);font-family:var(--md0-font-sans);font-size:.93rem;font-variant-numeric:tabular-nums;outline:0;transition:border-color .12s ease,box-shadow .12s ease}.md0-input>input:not([type="checkbox"]):hover{border-color:var(--field-hover)}.md0-input>input:not([type="checkbox"]):focus-visible{border-color:var(--focus);box-shadow:0 0 0 3px var(--focus-soft)}.md0-input>input[type=number]{-moz-appearance:textfield;appearance:textfield}.md0-input>input[type=number]::-webkit-inner-spin-button,.md0-input>input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;appearance:none;margin:0}.md0-input>input[type="checkbox"]{justify-self:end;width:20px;height:20px;margin:0;accent-color:var(--ink)}.md0-input>small{justify-self:end;color:var(--muted);font:600 .7rem/1 var(--md0-font-sans);letter-spacing:.01em}.md0-region{display:block}
-`
+const pageCSS = documentCSS
 
 const pageJS = `
 let md0Timer;
