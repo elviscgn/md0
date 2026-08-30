@@ -68,6 +68,8 @@ func (e *terminalEditorUX) drawPolishedUX(navigationLabel string) {
 	shortcuts := []editorShortcut{
 		{key: "Esc", label: navigationLabel},
 		{key: "Ctrl+S", label: "save"},
+		{key: "Ctrl+Z", label: "undo"},
+		{key: "Ctrl+F", label: "find"},
 		{key: "Ctrl+Space", label: "complete"},
 		{key: "Tab", label: "indent"},
 	}
