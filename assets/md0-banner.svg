@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="600" viewBox="0 0 1800 600" role="img" aria-labelledby="title desc">
+<title id="title">md0 — benchmark banner</title>
+<desc id="desc">Warm md0 banner showing a Markdown performance benchmark report that computes a speedup, renders prose and a chart, and validates a threshold.</desc>
+
+<defs>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+    <feDropShadow dx="0" dy="7" stdDeviation="12" flood-color="#231F20" flood-opacity=".08"/>
+  </filter>
+  <style>
+    .sans{font-family:Inter,'Helvetica Neue',Arial,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+    .mono{font-family:'IBM Plex Mono','JetBrains Mono','SFMono-Regular',Menlo,Consolas,Monaco,ui-monospace,monospace}
+    .brand{font-family:'IBM Plex Mono','JetBrains Mono','SFMono-Regular',Menlo,Consolas,Monaco,ui-monospace,monospace}
+  </style>
+  <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+    <circle cx="0" cy="0" r="1.05" fill="#C25A2B" opacity=".08"/>
+  </pattern>
+</defs>
+
+<rect width="1800" height="600" rx="24" fill="#FFF8F0"/>
+<rect x="0" y="0" width="10" height="600" fill="#C25A2B"/>
+<rect x="52" y="48" width="1680" height="504" fill="url(#dots)"/>
+
+<!-- left -->
+<g transform="translate(96 94)">
+  <text class="brand" x="0" y="142" font-size="176" font-weight="780" letter-spacing="-7" fill="#231F20">md0</text>
+  <text class="sans" x="0" y="220" font-size="41" font-weight="780" fill="#231F20">documents that compute.</text>
+  <text class="sans" x="0" y="270" font-size="41" font-weight="540" fill="#7A6E67">without becoming software.</text>
+
+  <rect x="0" y="328" width="6" height="28" rx="3" fill="#C25A2B"/>
+  <text class="mono" x="20" y="349" font-size="20" fill="#7A6E67">interactivity without authority.</text>
+
+  <g transform="translate(0 405)" class="mono" font-size="16">
+    <g>
+      <rect width="152" height="38" rx="19" fill="#F5E4D8"/>
+      <circle cx="21" cy="19" r="8" fill="none" stroke="#C25A2B" stroke-width="2"/>
+      <path d="M17 19l3 3 6-7" fill="none" stroke="#C25A2B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="40" y="25" fill="#9A4620">md0/PURE</text>
+    </g>
+    <g transform="translate(168)">
+      <rect width="116" height="38" rx="19" fill="#E2F0E7"/>
+      <text x="18" y="26" font-size="22" font-weight="800" fill="#2E7D4F">0</text>
+      <text x="41" y="25" fill="#2E7D4F">deps</text>
+    </g>
+    <g transform="translate(300)">
+      <rect width="226" height="38" rx="19" fill="#F1E8DD"/>
+      <text x="16" y="25" fill="#7A6E67">no shell · no network</text>
+    </g>
+  </g>
+</g>
+
+<line x1="690" y1="72" x2="690" y2="530" stroke="#E8DCD0" stroke-width="2"/>
+
+<!-- center source document -->
+<g transform="translate(715 50)" filter="url(#shadow)">
+  <rect x="12" y="12" width="470" height="500" rx="25" fill="#F1E8DD" stroke="#E8DCD0" stroke-width="1.5"/>
+  <rect width="470" height="500" rx="25" fill="#FFFCF8" stroke="#E8DCD0" stroke-width="2"/>
+
+  <rect width="470" height="60" rx="25" fill="#FFF8F0"/>
+  <rect y="38" width="470" height="22" fill="#FFF8F0"/>
+  <line x1="0" y1="60" x2="470" y2="60" stroke="#E8DCD0" stroke-width="2"/>
+
+  <circle cx="32" cy="30" r="8.5" fill="#FF5F57"/>
+  <circle cx="60" cy="30" r="8.5" fill="#FEBC2E"/>
+  <circle cx="88" cy="30" r="8.5" fill="#28C840"/>
+  <text class="mono" x="134" y="38" font-size="17.5" font-weight="700" fill="#4B5563">parser-benchmark.md</text>
+
+  <g class="mono" transform="translate(34 86)" font-size="15.0">
+    <text x="0" y="0" fill="#231F20"># Parser Benchmark</text>
+
+    <text x="0" y="40" fill="#C25A2B">@input</text>
+    <text x="66" y="40" fill="#231F20">baseline_ms number = 1.82</text>
+
+    <text x="0" y="74" fill="#C25A2B">@input</text>
+    <text x="66" y="74" fill="#231F20">candidate_ms number = 1.31</text>
+
+    <text x="0" y="118" fill="#C25A2B">@calc</text>
+    <text x="64" y="118" fill="#231F20">speedup =</text>
+    <text x="64" y="144" fill="#8A7E78">(baseline_ms - candidate_ms)</text>
+    <text x="64" y="170" fill="#8A7E78">/ baseline_ms * 100</text>
+
+    <text x="0" y="214" fill="#6C5F58">Parse time improved by</text>
+    <text x="0" y="238" fill="#C25A2B">**{{ speedup }}%**.</text>
+
+    <text x="0" y="258" fill="#2E7D4F">@assert</text>
+    <text x="80" y="258" fill="#231F20">candidate_ms &lt;= baseline_ms * 1.05</text>
+    <text x="0" y="284" fill="#8A7E78">Candidate must not regress by more than 5%.</text>
+    <text x="0" y="310" fill="#2E7D4F">@end</text>
+
+    <text x="0" y="330" fill="#C25A2B">@chart</text>
+    <text x="66" y="330" fill="#231F20">latency</text>
+    <text x="0" y="354" fill="#8A7E78">labels = ["Baseline", "Candidate"]</text>
+    <text x="0" y="378" fill="#8A7E78">values = [baseline_ms, candidate_ms]</text>
+    <text x="0" y="402" fill="#C25A2B">@end</text>
+  </g>
+</g>
+
+<!-- right outputs -->
+<g transform="translate(1205 112)">
+  <line x1="-20" y1="188" x2="12" y2="188" stroke="#C25A2B" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="18" cy="188" r="10" fill="#F5E4D8" stroke="#C25A2B" stroke-width="3"/>
+  <circle cx="18" cy="188" r="3.5" fill="#C25A2B"/>
+
+  <g fill="none" stroke="#C25A2B" stroke-width="3" stroke-linecap="round">
+    <path d="M28 188 C94 188 118 74 206 58"/>
+    <path d="M28 188 C94 188 118 165 206 165"/>
+    <path d="M28 188 C94 188 118 252 206 272"/>
+  </g>
+  <path d="M28 188 C94 188 118 348 206 379" fill="none" stroke="#2E7D4F" stroke-width="3" stroke-linecap="round"/>
+
+  <circle cx="206" cy="58" r="6" fill="#C25A2B"/>
+  <circle cx="206" cy="165" r="6" fill="#C25A2B"/>
+  <circle cx="206" cy="272" r="6" fill="#C25A2B"/>
+  <circle cx="206" cy="379" r="6" fill="#2E7D4F"/>
+
+  <g transform="translate(232 24)">
+    <rect width="300" height="72" rx="18" fill="#FFFCF8" stroke="#E8DCD0" stroke-width="2"/>
+    <text class="mono" x="20" y="25" font-size="13" fill="#8A7E78">speedup</text>
+    <text class="sans" x="20" y="53" font-size="23" font-weight="780" fill="#231F20">28.0% faster</text>
+  </g>
+
+  <g transform="translate(232 131)">
+    <rect width="300" height="72" rx="18" fill="#FFFCF8" stroke="#E8DCD0" stroke-width="2"/>
+    <text class="mono" x="20" y="24" font-size="12" fill="#8A7E78">reactive prose</text>
+    <text class="sans" x="20" y="51" font-size="17.2" font-weight="650" fill="#231F20">Parse time improved by 28.0%.</text>
+  </g>
+
+  <g transform="translate(232 238)">
+    <rect width="300" height="72" rx="18" fill="#FFFCF8" stroke="#E8DCD0" stroke-width="2"/>
+    <text class="mono" x="20" y="20" font-size="12" fill="#8A7E78">latency</text>
+    <line x1="35" y1="57" x2="270" y2="57" stroke="#D7CABD" stroke-width="2"/>
+    <rect x="98" y="20" width="34" height="37" rx="4" fill="#C25A2B"/>
+    <rect x="184" y="30" width="34" height="27" rx="4" fill="#2E7D4F"/>
+    <text class="mono" x="115" y="14" text-anchor="middle" font-size="10.5" fill="#9A4620">1.82</text>
+    <text class="mono" x="201" y="24" text-anchor="middle" font-size="10.5" fill="#2E7D4F">1.31</text>
+    <text class="mono" x="115" y="69" text-anchor="middle" font-size="9.5" fill="#8A7E78">baseline</text>
+    <text class="mono" x="201" y="69" text-anchor="middle" font-size="9.5" fill="#8A7E78">candidate</text>
+  </g>
+
+  <g transform="translate(232 345)">
+    <rect width="300" height="72" rx="18" fill="#EAF5EE" stroke="#CDE4D6" stroke-width="2"/>
+    <circle cx="28" cy="36" r="15" fill="#2E7D4F"/>
+    <path d="M20 36l6 6 12-14" fill="none" stroke="#FFFCF8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="mono" x="58" y="23" font-size="12" fill="#2E7D4F">@assert passed</text>
+    <text class="sans" x="58" y="49" font-size="18" font-weight="760" fill="#2E7D4F">1.31 ms ≤ 1.91 ms</text>
+  </g>
+</g>
+
+</svg>
