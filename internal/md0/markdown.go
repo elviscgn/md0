@@ -21,7 +21,7 @@ func renderInline(s string) string {
 func renderMarkdown(s string) string {
 	lines := strings.Split(s, "\n")
 	var out strings.Builder
-	inCode := false
+	var fence *markdownFence
 	inList := false
 	inPara := false
 	closePara := func() {
@@ -38,21 +38,21 @@ func renderMarkdown(s string) string {
 	}
 	for _, line := range lines {
 		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "```") || strings.HasPrefix(trim, "~~~") {
-			closePara()
-			closeList()
-			if !inCode {
-				out.WriteString("<pre><code>")
-				inCode = true
-			} else {
+		if fence != nil {
+			if isFenceClose(line, *fence) {
 				out.WriteString("</code></pre>\n")
-				inCode = false
+				fence = nil
+			} else {
+				out.WriteString(html.EscapeString(line))
+				out.WriteByte('\n')
 			}
 			continue
 		}
-		if inCode {
-			out.WriteString(html.EscapeString(line))
-			out.WriteByte('\n')
+		if marker, run, _, ok := fenceMarker(line); ok {
+			closePara()
+			closeList()
+			out.WriteString("<pre><code>")
+			fence = &markdownFence{marker: marker, length: run}
 			continue
 		}
 		if trim == "" {
@@ -100,7 +100,7 @@ func renderMarkdown(s string) string {
 	}
 	closePara()
 	closeList()
-	if inCode {
+	if fence != nil {
 		out.WriteString("</code></pre>\n")
 	}
 	return out.String()

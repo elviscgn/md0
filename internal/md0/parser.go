@@ -20,10 +20,85 @@ type sourceLine struct {
 	text string
 }
 
-// parseExprBounded performs a complete lexical pass before invoking the
-// expression parser. This guarantees malformed characters are rejected before
-// parser state can advance, and caps expression complexity independently of
-// the document-size limit.
+type markdownFence struct {
+	marker byte
+	length int
+}
+
+func fenceMarker(line string) (byte, int, string, bool) {
+	trim := strings.TrimLeft(line, " \t")
+	if len(trim) < 3 || trim[0] != '`' && trim[0] != '~' {
+		return 0, 0, "", false
+	}
+	marker := trim[0]
+	run := 0
+	for run < len(trim) && trim[run] == marker {
+		run++
+	}
+	if run < 3 {
+		return 0, 0, "", false
+	}
+	return marker, run, trim[run:], true
+}
+
+func isFenceClose(line string, fence markdownFence) bool {
+	marker, run, rest, ok := fenceMarker(line)
+	return ok && marker == fence.marker && run >= fence.length && strings.TrimSpace(rest) == ""
+}
+
+func findInputDirective(line string) (int, bool) {
+	const needle = "@input "
+	for i := 0; i < len(line); {
+		if line[i] == '\\' {
+			if i+1 < len(line) {
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if line[i] == '`' {
+			run := 1
+			for i+run < len(line) && line[i+run] == '`' {
+				run++
+			}
+			if closeAt := matchingBacktickRun(line, i+run, run); closeAt >= 0 {
+				i = closeAt + run
+				continue
+			}
+			i += run
+			continue
+		}
+		if strings.HasPrefix(line[i:], needle) {
+			return i, true
+		}
+		i++
+	}
+	return -1, false
+}
+
+func matchingBacktickRun(line string, start, wanted int) int {
+	for i := start; i < len(line); {
+		if line[i] != '`' {
+			i++
+			continue
+		}
+		run := 1
+		for i+run < len(line) && line[i+run] == '`' {
+			run++
+		}
+		if run == wanted {
+			return i
+		}
+		i += run
+	}
+	return -1
+}
+
+func hasDirective(trim, directive string) bool {
+	return trim == directive || strings.HasPrefix(trim, directive+" ")
+}
+
 func parseExprBounded(src string) (Expr, error) {
 	l := lexer{src: src}
 	tokens := 0
@@ -102,7 +177,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 	}
 	nodes := []Node{}
 	var md []sourceLine
-	inFence := false
+	var fence *markdownFence
 	flush := func() {
 		if len(md) == 0 {
 			return
@@ -118,14 +193,17 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 	for i := start; i < len(lines); {
 		line := lines[i]
 		trim := strings.TrimSpace(line.text)
-		if strings.HasPrefix(trim, "```") || strings.HasPrefix(trim, "~~~") {
+		if fence != nil {
 			md = append(md, line)
-			inFence = !inFence
+			if isFenceClose(line.text, *fence) {
+				fence = nil
+			}
 			i++
 			continue
 		}
-		if inFence {
+		if marker, run, _, ok := fenceMarker(line.text); ok {
 			md = append(md, line)
+			fence = &markdownFence{marker: marker, length: run}
 			i++
 			continue
 		}
@@ -137,7 +215,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			return nodes, i + 1, nil
 		}
 
-		if pos := strings.Index(line.text, "@input "); pos >= 0 {
+		if pos, ok := findInputDirective(line.text); ok {
 			prefix := strings.TrimSpace(line.text[:pos])
 			rest := strings.TrimSpace(line.text[pos+len("@input "):])
 			m := inputRE.FindStringSubmatch(rest)
@@ -153,9 +231,10 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			}
 		}
 
-		if strings.HasPrefix(trim, "@calc ") {
+		if hasDirective(trim, "@calc") {
 			flush()
-			m := calcRE.FindStringSubmatch(strings.TrimSpace(strings.TrimPrefix(trim, "@calc ")))
+			rest := strings.TrimSpace(strings.TrimPrefix(trim, "@calc"))
+			m := calcRE.FindStringSubmatch(rest)
 			if m == nil {
 				return nil, i, fmt.Errorf("line %d: expected @calc name = expression", line.no)
 			}
@@ -167,9 +246,12 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			i++
 			continue
 		}
-		if strings.HasPrefix(trim, "@show ") {
+		if hasDirective(trim, "@show") {
 			flush()
-			src := strings.TrimSpace(strings.TrimPrefix(trim, "@show "))
+			src := strings.TrimSpace(strings.TrimPrefix(trim, "@show"))
+			if src == "" {
+				return nil, i, fmt.Errorf("line %d: @show requires an expression", line.no)
+			}
 			e, err := parseExprBounded(src)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid @show expression: %w", line.no, err)
@@ -178,17 +260,39 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			i++
 			continue
 		}
-		if strings.HasPrefix(trim, "@assert ") {
+		if hasDirective(trim, "@assert") {
 			flush()
-			src := strings.TrimSpace(strings.TrimPrefix(trim, "@assert "))
+			src := strings.TrimSpace(strings.TrimPrefix(trim, "@assert"))
+			if src == "" {
+				return nil, i, fmt.Errorf("line %d: @assert requires an expression", line.no)
+			}
 			e, err := parseExprBounded(src)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid @assert expression: %w", line.no, err)
 			}
 			i++
 			var msg []string
-			for i < len(lines) && strings.TrimSpace(lines[i].text) != "@end" {
-				msg = append(msg, lines[i].text)
+			var msgFence *markdownFence
+			for i < len(lines) {
+				candidate := lines[i]
+				if msgFence != nil {
+					msg = append(msg, candidate.text)
+					if isFenceClose(candidate.text, *msgFence) {
+						msgFence = nil
+					}
+					i++
+					continue
+				}
+				if marker, run, _, ok := fenceMarker(candidate.text); ok {
+					msg = append(msg, candidate.text)
+					msgFence = &markdownFence{marker: marker, length: run}
+					i++
+					continue
+				}
+				if strings.TrimSpace(candidate.text) == "@end" {
+					break
+				}
+				msg = append(msg, candidate.text)
 				i++
 			}
 			if i >= len(lines) {
@@ -198,9 +302,12 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			i++
 			continue
 		}
-		if strings.HasPrefix(trim, "@when ") {
+		if hasDirective(trim, "@when") {
 			flush()
-			src := strings.TrimSpace(strings.TrimPrefix(trim, "@when "))
+			src := strings.TrimSpace(strings.TrimPrefix(trim, "@when"))
+			if src == "" {
+				return nil, i, fmt.Errorf("line %d: @when requires an expression", line.no)
+			}
 			e, err := parseExprBounded(src)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid @when expression: %w", line.no, err)
@@ -213,7 +320,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			i = next
 			continue
 		}
-		if strings.HasPrefix(trim, "@chart") {
+		if hasDirective(trim, "@chart") {
 			flush()
 			name := strings.TrimSpace(strings.TrimPrefix(trim, "@chart"))
 			if name == "" {
@@ -244,7 +351,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			i = next
 			continue
 		}
-		if strings.HasPrefix(trim, "@table") {
+		if hasDirective(trim, "@table") {
 			flush()
 			name := strings.TrimSpace(strings.TrimPrefix(trim, "@table"))
 			if name == "" {
@@ -273,7 +380,12 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 		}
 		if strings.HasPrefix(trim, "@") {
 			flush()
-			return nil, i, fmt.Errorf("line %d: unknown directive %q", line.no, strings.Fields(trim)[0])
+			fields := strings.Fields(trim)
+			directive := trim
+			if len(fields) > 0 {
+				directive = fields[0]
+			}
+			return nil, i, fmt.Errorf("line %d: unknown directive %q", line.no, directive)
 		}
 		md = append(md, line)
 		i++
@@ -301,6 +413,9 @@ func parseConfigBlock(lines []sourceLine, start, parentLine int, kind string) (m
 		}
 		k := strings.TrimSpace(trim[:eq])
 		v := strings.TrimSpace(trim[eq+1:])
+		if _, exists := cfg[k]; exists {
+			return nil, i, fmt.Errorf("line %d: duplicate %s key %q", lines[i].no, kind, k)
+		}
 		cfg[k] = v
 	}
 	return nil, len(lines), fmt.Errorf("line %d: %s missing @end", parentLine, kind)
