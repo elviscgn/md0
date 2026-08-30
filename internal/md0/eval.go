@@ -22,13 +22,22 @@ type EvalResult struct {
 }
 
 func Evaluate(doc *Document, overrides map[string]string) (*EvalResult, error) {
-	if _, err := BuildDependencyGraph(doc); err != nil {
+	plan, err := BuildEvaluationPlan(doc)
+	if err != nil {
 		return nil, err
 	}
-	return evaluateDocument(doc, overrides)
+	return evaluateWithPlan(doc, plan, overrides)
 }
 
 func evaluateDocument(doc *Document, overrides map[string]string) (*EvalResult, error) {
+	plan, err := BuildEvaluationPlan(doc)
+	if err != nil {
+		return nil, err
+	}
+	return evaluateWithPlan(doc, plan, overrides)
+}
+
+func evaluateWithPlan(doc *Document, plan *EvaluationPlan, overrides map[string]string) (*EvalResult, error) {
 	r := &EvalResult{
 		Env:             map[string]Value{},
 		AssertionByLine: map[int]AssertionResult{},
@@ -37,80 +46,106 @@ func evaluateDocument(doc *Document, overrides map[string]string) (*EvalResult, 
 	if overrides == nil {
 		overrides = map[string]string{}
 	}
-	if err := evalNodes(doc.Nodes, r, overrides); err != nil {
-		return nil, err
+	for name := range overrides {
+		if !plan.Graph.IsInputSymbol(name) {
+			return nil, fmt.Errorf("unknown input override %q", name)
+		}
+	}
+
+	for _, id := range plan.Order {
+		node := plan.Nodes[id]
+		if !plan.guardsActive(id, r) {
+			clearNodeState(node, r)
+			continue
+		}
+		if err := evalPlannedNode(node, r, overrides); err != nil {
+			return nil, err
+		}
 	}
 	rebuildAssertions(doc.Nodes, r)
 	return r, nil
 }
 
-func evalNodes(nodes []Node, r *EvalResult, overrides map[string]string) error {
-	for _, n := range nodes {
-		switch x := n.(type) {
-		case MarkdownNode:
-		case InputNode:
-			var v Value
-			var err error
-			if raw, ok := overrides[x.Name]; ok {
-				v, err = parseInputValue(x.Type, raw)
-			} else {
-				v, err = x.Default.Eval(r.Env)
-			}
-			if err != nil {
-				return fmt.Errorf("line %d: input %s: %w", x.Line, x.Name, err)
-			}
-			if err := validateInputType(x.Type, v); err != nil {
-				return fmt.Errorf("line %d: input %s: %w", x.Line, x.Name, err)
-			}
-			r.Env[x.Name] = v
-		case CalcNode:
-			v, err := x.Expr.Eval(r.Env)
-			if err != nil {
-				return fmt.Errorf("line %d: calc %s: %w", x.Line, x.Name, err)
-			}
-			r.Env[x.Name] = v
-		case ShowNode:
-			if _, err := x.Expr.Eval(r.Env); err != nil {
-				return fmt.Errorf("line %d: show: %w", x.Line, err)
-			}
-		case AssertNode:
-			v, err := x.Expr.Eval(r.Env)
-			if err != nil {
-				return fmt.Errorf("line %d: assert: %w", x.Line, err)
-			}
-			b, err := v.AsBool()
-			if err != nil {
-				return fmt.Errorf("line %d: assert must be boolean: %w", x.Line, err)
-			}
-			r.AssertionByLine[x.Line] = AssertionResult{Line: x.Line, Source: x.Source, Message: x.Message, Passed: b}
-		case WhenNode:
-			v, err := x.Expr.Eval(r.Env)
-			if err != nil {
-				return fmt.Errorf("line %d: when: %w", x.Line, err)
-			}
-			b, err := v.AsBool()
-			if err != nil {
-				return fmt.Errorf("line %d: when must be boolean: %w", x.Line, err)
-			}
-			r.WhenByLine[x.Line] = b
-			if b {
-				if err := evalNodes(x.Nodes, r, overrides); err != nil {
-					return err
-				}
-			}
-		case ChartNode:
-			if err := validateChart(x, r.Env); err != nil {
-				return fmt.Errorf("line %d: chart %s: %w", x.Line, x.Name, err)
-			}
-		case TableNode:
-			if err := validateTable(x, r.Env); err != nil {
-				return fmt.Errorf("line %d: table %s: %w", x.Line, x.Name, err)
-			}
-		default:
-			return fmt.Errorf("line %d: unsupported node", n.LineNo())
+func evalPlannedNode(node Node, r *EvalResult, overrides map[string]string) error {
+	switch x := node.(type) {
+	case MarkdownNode:
+		return nil
+	case InputNode:
+		var value Value
+		var err error
+		if raw, ok := overrides[x.Name]; ok {
+			value, err = parseInputValue(x.Type, raw)
+		} else {
+			value, err = x.Default.Eval(r.Env)
 		}
+		if err != nil {
+			return fmt.Errorf("line %d: input %s: %w", x.Line, x.Name, err)
+		}
+		if err := validateInputType(x.Type, value); err != nil {
+			return fmt.Errorf("line %d: input %s: %w", x.Line, x.Name, err)
+		}
+		r.Env[x.Name] = value
+		return nil
+	case CalcNode:
+		value, err := x.Expr.Eval(r.Env)
+		if err != nil {
+			return fmt.Errorf("line %d: calc %s: %w", x.Line, x.Name, err)
+		}
+		r.Env[x.Name] = value
+		return nil
+	case ShowNode:
+		if _, err := x.Expr.Eval(r.Env); err != nil {
+			return fmt.Errorf("line %d: show: %w", x.Line, err)
+		}
+		return nil
+	case AssertNode:
+		value, err := x.Expr.Eval(r.Env)
+		if err != nil {
+			return fmt.Errorf("line %d: assert: %w", x.Line, err)
+		}
+		passed, err := value.AsBool()
+		if err != nil {
+			return fmt.Errorf("line %d: assert must be boolean: %w", x.Line, err)
+		}
+		r.AssertionByLine[x.Line] = AssertionResult{Line: x.Line, Source: x.Source, Message: x.Message, Passed: passed}
+		return nil
+	case WhenNode:
+		value, err := x.Expr.Eval(r.Env)
+		if err != nil {
+			return fmt.Errorf("line %d: when: %w", x.Line, err)
+		}
+		active, err := value.AsBool()
+		if err != nil {
+			return fmt.Errorf("line %d: when must be boolean: %w", x.Line, err)
+		}
+		r.WhenByLine[x.Line] = active
+		return nil
+	case ChartNode:
+		if err := validateChart(x, r.Env); err != nil {
+			return fmt.Errorf("line %d: chart %s: %w", x.Line, x.Name, err)
+		}
+		return nil
+	case TableNode:
+		if err := validateTable(x, r.Env); err != nil {
+			return fmt.Errorf("line %d: table %s: %w", x.Line, x.Name, err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("line %d: unsupported node", node.LineNo())
 	}
-	return nil
+}
+
+func clearNodeState(node Node, r *EvalResult) {
+	switch x := node.(type) {
+	case InputNode:
+		delete(r.Env, x.Name)
+	case CalcNode:
+		delete(r.Env, x.Name)
+	case AssertNode:
+		delete(r.AssertionByLine, x.Line)
+	case WhenNode:
+		delete(r.WhenByLine, x.Line)
+	}
 }
 
 func rebuildAssertions(nodes []Node, r *EvalResult) {

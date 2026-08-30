@@ -14,23 +14,23 @@ type IncrementalStats struct {
 type ReactiveSession struct {
 	mu        sync.Mutex
 	doc       *Document
-	graph     *DependencyGraph
+	plan      *EvaluationPlan
 	result    *EvalResult
 	overrides map[string]string
 }
 
 func NewReactiveSession(doc *Document) (*ReactiveSession, error) {
-	graph, err := BuildDependencyGraph(doc)
+	plan, err := BuildEvaluationPlan(doc)
 	if err != nil {
 		return nil, err
 	}
-	result, err := evaluateDocument(doc, nil)
+	result, err := evaluateWithPlan(doc, plan, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &ReactiveSession{
 		doc:       doc,
-		graph:     graph,
+		plan:      plan,
 		result:    result,
 		overrides: renderedInputSnapshot(doc.Nodes, result),
 	}, nil
@@ -39,7 +39,7 @@ func NewReactiveSession(doc *Document) (*ReactiveSession, error) {
 func (s *ReactiveSession) Reset() (*EvalResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result, err := evaluateDocument(s.doc, nil)
+	result, err := evaluateWithPlan(s.doc, s.plan, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (s *ReactiveSession) Snapshot() *EvalResult {
 }
 
 func (s *ReactiveSession) Graph() *DependencyGraph {
-	return s.graph
+	return s.plan.Graph
 }
 
 func (s *ReactiveSession) Update(overrides map[string]string) (*EvalResult, IncrementalStats, error) {
@@ -66,7 +66,7 @@ func (s *ReactiveSession) Update(overrides map[string]string) (*EvalResult, Incr
 		overrides = map[string]string{}
 	}
 	for name := range overrides {
-		if !s.graph.IsInputSymbol(name) {
+		if !s.plan.Graph.IsInputSymbol(name) {
 			return nil, IncrementalStats{}, fmt.Errorf("unknown input override %q", name)
 		}
 	}
@@ -77,10 +77,10 @@ func (s *ReactiveSession) Update(overrides map[string]string) (*EvalResult, Incr
 		return cloneEvalResult(s.result), stats, nil
 	}
 
-	affected := s.graph.AffectedBySymbols(changed)
-	stats.Recomputed = s.graph.OrderedAffected(affected)
+	affected := s.plan.Graph.AffectedBySymbols(changed)
+	stats.Recomputed = s.plan.OrderedAffected(affected)
 	next := cloneEvalResult(s.result)
-	if err := evalNodesIncremental(s.doc.Nodes, next, s.result, overrides, affected, false); err != nil {
+	if err := evalPlanIncremental(s.plan, next, overrides, affected); err != nil {
 		return nil, IncrementalStats{}, err
 	}
 	rebuildAssertions(s.doc.Nodes, next)
@@ -88,6 +88,23 @@ func (s *ReactiveSession) Update(overrides map[string]string) (*EvalResult, Incr
 	s.result = next
 	s.overrides = copyStringMap(overrides)
 	return cloneEvalResult(next), stats, nil
+}
+
+func evalPlanIncremental(plan *EvaluationPlan, result *EvalResult, overrides map[string]string, affected map[string]bool) error {
+	for _, id := range plan.Order {
+		if !affected[id] {
+			continue
+		}
+		node := plan.Nodes[id]
+		if !plan.guardsActive(id, result) {
+			clearNodeState(node, result)
+			continue
+		}
+		if err := evalPlannedNode(node, result, overrides); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func renderedInputSnapshot(nodes []Node, result *EvalResult) map[string]string {
@@ -129,118 +146,6 @@ func changedOverrides(previous, next map[string]string) []string {
 	}
 	sort.Strings(changed)
 	return changed
-}
-
-func evalNodesIncremental(nodes []Node, r, previous *EvalResult, overrides map[string]string, affected map[string]bool, force bool) error {
-	for _, raw := range nodes {
-		id := dependencyNodeID(raw)
-		recompute := force || affected[id]
-		switch x := raw.(type) {
-		case MarkdownNode:
-			// Markdown is rendered from the current environment. Its dependency
-			// node still participates in invalidation accounting.
-		case InputNode:
-			if !recompute {
-				continue
-			}
-			var value Value
-			var err error
-			if source, ok := overrides[x.Name]; ok {
-				value, err = parseInputValue(x.Type, source)
-			} else {
-				value, err = x.Default.Eval(r.Env)
-			}
-			if err != nil {
-				return fmt.Errorf("line %d: input %s: %w", x.Line, x.Name, err)
-			}
-			if err := validateInputType(x.Type, value); err != nil {
-				return fmt.Errorf("line %d: input %s: %w", x.Line, x.Name, err)
-			}
-			r.Env[x.Name] = value
-		case CalcNode:
-			if !recompute {
-				continue
-			}
-			value, err := x.Expr.Eval(r.Env)
-			if err != nil {
-				return fmt.Errorf("line %d: calc %s: %w", x.Line, x.Name, err)
-			}
-			r.Env[x.Name] = value
-		case ShowNode:
-			if recompute {
-				if _, err := x.Expr.Eval(r.Env); err != nil {
-					return fmt.Errorf("line %d: show: %w", x.Line, err)
-				}
-			}
-		case AssertNode:
-			if !recompute {
-				continue
-			}
-			value, err := x.Expr.Eval(r.Env)
-			if err != nil {
-				return fmt.Errorf("line %d: assert: %w", x.Line, err)
-			}
-			passed, err := value.AsBool()
-			if err != nil {
-				return fmt.Errorf("line %d: assert must be boolean: %w", x.Line, err)
-			}
-			r.AssertionByLine[x.Line] = AssertionResult{Line: x.Line, Source: x.Source, Message: x.Message, Passed: passed}
-		case WhenNode:
-			previousActive, hadPrevious := previous.WhenByLine[x.Line]
-			active := previousActive
-			if recompute || !hadPrevious {
-				value, err := x.Expr.Eval(r.Env)
-				if err != nil {
-					return fmt.Errorf("line %d: when: %w", x.Line, err)
-				}
-				boolValue, boolErr := value.AsBool()
-				if boolErr != nil {
-					return fmt.Errorf("line %d: when must be boolean: %w", x.Line, boolErr)
-				}
-				active = boolValue
-			}
-			r.WhenByLine[x.Line] = active
-			if !active {
-				clearSubtreeState(x.Nodes, r)
-				continue
-			}
-			childForce := force || !previousActive
-			if err := evalNodesIncremental(x.Nodes, r, previous, overrides, affected, childForce); err != nil {
-				return err
-			}
-		case ChartNode:
-			if recompute {
-				if err := validateChart(x, r.Env); err != nil {
-					return fmt.Errorf("line %d: chart %s: %w", x.Line, x.Name, err)
-				}
-			}
-		case TableNode:
-			if recompute {
-				if err := validateTable(x, r.Env); err != nil {
-					return fmt.Errorf("line %d: table %s: %w", x.Line, x.Name, err)
-				}
-			}
-		default:
-			return fmt.Errorf("line %d: unsupported node", raw.LineNo())
-		}
-	}
-	return nil
-}
-
-func clearSubtreeState(nodes []Node, r *EvalResult) {
-	for _, raw := range nodes {
-		switch x := raw.(type) {
-		case InputNode:
-			delete(r.Env, x.Name)
-		case CalcNode:
-			delete(r.Env, x.Name)
-		case AssertNode:
-			delete(r.AssertionByLine, x.Line)
-		case WhenNode:
-			delete(r.WhenByLine, x.Line)
-			clearSubtreeState(x.Nodes, r)
-		}
-	}
 }
 
 func cloneEvalResult(source *EvalResult) *EvalResult {
