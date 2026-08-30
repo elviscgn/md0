@@ -28,7 +28,12 @@ func NewReactiveSession(doc *Document) (*ReactiveSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ReactiveSession{doc: doc, graph: graph, result: result, overrides: map[string]string{}}, nil
+	return &ReactiveSession{
+		doc:       doc,
+		graph:     graph,
+		result:    result,
+		overrides: renderedInputSnapshot(doc.Nodes, result),
+	}, nil
 }
 
 func (s *ReactiveSession) Reset() (*EvalResult, error) {
@@ -39,7 +44,7 @@ func (s *ReactiveSession) Reset() (*EvalResult, error) {
 		return nil, err
 	}
 	s.result = result
-	s.overrides = map[string]string{}
+	s.overrides = renderedInputSnapshot(s.doc.Nodes, result)
 	return cloneEvalResult(result), nil
 }
 
@@ -83,6 +88,27 @@ func (s *ReactiveSession) Update(overrides map[string]string) (*EvalResult, Incr
 	s.result = next
 	s.overrides = copyStringMap(overrides)
 	return cloneEvalResult(next), stats, nil
+}
+
+func renderedInputSnapshot(nodes []Node, result *EvalResult) map[string]string {
+	out := map[string]string{}
+	var walk func([]Node)
+	walk = func(current []Node) {
+		for _, raw := range current {
+			switch x := raw.(type) {
+			case InputNode:
+				if value, ok := result.Env[x.Name]; ok {
+					out[x.Name] = formatInputDisplayValue(x.Type, value)
+				}
+			case WhenNode:
+				if result.WhenByLine[x.Line] {
+					walk(x.Nodes)
+				}
+			}
+		}
+	}
+	walk(nodes)
+	return out
 }
 
 func changedOverrides(previous, next map[string]string) []string {
