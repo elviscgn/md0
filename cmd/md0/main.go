@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	core "github.com/elviscgn/md0/internal/md0"
 )
@@ -37,12 +38,33 @@ func usage() {
 	fmt.Fprint(os.Stderr, `md0 — safe computational Markdown
 
 Usage:
-  md0 validate [--values FILE] FILE
-  md0 eval [--values FILE] FILE
-  md0 render [-o FILE] [--values FILE] [--snapshot FILE] FILE
-  md0 open [-addr 127.0.0.1:8080] [--values FILE] FILE
+  md0 validate [--values FILE] [--data NAME=FILE] FILE
+  md0 eval [--values FILE] [--data NAME=FILE] FILE
+  md0 render [-o FILE] [--values FILE] [--data NAME=FILE] [--snapshot FILE] FILE
+  md0 open [-addr 127.0.0.1:8080] [--values FILE] [--data NAME=FILE] FILE
   md0 inspect FILE
 `)
+}
+
+type dataFlags []string
+
+func (f *dataFlags) String() string { return strings.Join(*f, ",") }
+
+func (f *dataFlags) Set(value string) error {
+	*f = append(*f, value)
+	return nil
+}
+
+func addDataFlags(fs *flag.FlagSet) *dataFlags {
+	var values dataFlags
+	fs.Var(&values, "data", "bind declared data as NAME=FILE (repeatable)")
+	return &values
+}
+
+func bindData(doc *core.Document, specs []string) {
+	if err := core.BindDataFiles(doc, specs); err != nil {
+		dieDoc(doc, err)
+	}
 }
 
 func loadValues(path string) map[string]string {
@@ -71,8 +93,10 @@ func oneFile(name string, args []string) *core.Document {
 func cmdValidate(args []string) {
 	fs := flag.NewFlagSet("validate", flag.ExitOnError)
 	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
+	data := addDataFlags(fs)
 	fs.Parse(args)
 	doc := oneFile("validate", fs.Args())
+	bindData(doc, *data)
 	r, err := core.Evaluate(doc, loadValues(*valuesPath))
 	if err != nil {
 		dieDoc(doc, err)
@@ -97,8 +121,10 @@ func cmdValidate(args []string) {
 func cmdEval(args []string) {
 	fs := flag.NewFlagSet("eval", flag.ExitOnError)
 	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
+	data := addDataFlags(fs)
 	fs.Parse(args)
 	doc := oneFile("eval", fs.Args())
+	bindData(doc, *data)
 	r, err := core.Evaluate(doc, loadValues(*valuesPath))
 	if err != nil {
 		dieDoc(doc, err)
@@ -123,8 +149,10 @@ func cmdRender(args []string) {
 	out := fs.String("o", "", "output HTML file (default stdout)")
 	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
 	snapshotPath := fs.String("snapshot", "", "write durable snapshot JSON")
+	data := addDataFlags(fs)
 	fs.Parse(args)
 	doc := oneFile("render", fs.Args())
+	bindData(doc, *data)
 	r, err := core.Evaluate(doc, loadValues(*valuesPath))
 	if err != nil {
 		dieDoc(doc, err)
@@ -163,13 +191,15 @@ func cmdOpen(args []string) {
 	fs := flag.NewFlagSet("open", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8080", "loopback listen address")
 	valuesPath := fs.String("values", "", "JSON values or md0 snapshot file")
+	data := addDataFlags(fs)
 	fs.Parse(args)
 	doc := oneFile("open", fs.Args())
+	bindData(doc, *data)
 	values := loadValues(*valuesPath)
 	if _, err := core.Evaluate(doc, values); err != nil {
 		dieDoc(doc, err)
 	}
-	if err := core.ServeFileWithValues(doc.Path, *addr, values); err != nil {
+	if err := core.ServeFileWithOptions(doc.Path, *addr, values, *data); err != nil {
 		die(err)
 	}
 }

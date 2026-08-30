@@ -3,6 +3,7 @@ package md0
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -15,6 +16,7 @@ const (
 	StringKind
 	BoolKind
 	ListKind
+	ObjectKind
 )
 
 type Value struct {
@@ -23,6 +25,7 @@ type Value struct {
 	Str  string
 	Bool bool
 	List []Value
+	Obj  map[string]Value
 }
 
 func Null() Value            { return Value{Kind: NullKind} }
@@ -30,6 +33,9 @@ func Number(v float64) Value { return Value{Kind: NumberKind, Num: v} }
 func String(v string) Value  { return Value{Kind: StringKind, Str: v} }
 func Boolean(v bool) Value   { return Value{Kind: BoolKind, Bool: v} }
 func List(v []Value) Value   { return Value{Kind: ListKind, List: v} }
+func Object(v map[string]Value) Value {
+	return Value{Kind: ObjectKind, Obj: v}
+}
 
 func (v Value) String() string {
 	switch v.Kind {
@@ -50,6 +56,17 @@ func (v Value) String() string {
 			parts[i] = item.String()
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
+	case ObjectKind:
+		keys := make([]string, 0, len(v.Obj))
+		for key := range v.Obj {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		parts := make([]string, len(keys))
+		for i, key := range keys {
+			parts[i] = strconv.Quote(key) + ": " + v.Obj[key].String()
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
 	default:
 		return "<invalid>"
 	}
@@ -76,6 +93,13 @@ func (v Value) AsList() ([]Value, error) {
 	return v.List, nil
 }
 
+func (v Value) AsObject() (map[string]Value, error) {
+	if v.Kind != ObjectKind {
+		return nil, fmt.Errorf("expected object, got %s", v.TypeName())
+	}
+	return v.Obj, nil
+}
+
 func (v Value) TypeName() string {
 	switch v.Kind {
 	case NullKind:
@@ -88,6 +112,8 @@ func (v Value) TypeName() string {
 		return "boolean"
 	case ListKind:
 		return "list"
+	case ObjectKind:
+		return "object"
 	default:
 		return "invalid"
 	}
@@ -112,6 +138,17 @@ func ValuesEqual(a, b Value) bool {
 		}
 		for i := range a.List {
 			if !ValuesEqual(a.List[i], b.List[i]) {
+				return false
+			}
+		}
+		return true
+	case ObjectKind:
+		if len(a.Obj) != len(b.Obj) {
+			return false
+		}
+		for key, value := range a.Obj {
+			other, ok := b.Obj[key]
+			if !ok || !ValuesEqual(value, other) {
 				return false
 			}
 		}

@@ -12,6 +12,7 @@ import (
 var (
 	inputRE = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$`)
 	calcRE  = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$`)
+	dataRE  = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s+(json|csv)$`)
 )
 
 const maxExpressionTokens = 512
@@ -241,6 +242,19 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 				i++
 				continue
 			}
+		}
+
+		if hasDirective(trim, "@data") {
+			flush()
+			rest := strings.TrimSpace(strings.TrimPrefix(trim, "@data"))
+			match := dataRE.FindStringSubmatch(strings.ToLower(rest))
+			if match == nil {
+				return nil, i, fmt.Errorf("line %d: expected @data name json|csv", line.no)
+			}
+			original := strings.Fields(rest)
+			nodes = append(nodes, DataNode{Line: line.no, Name: original[0], Format: match[2], Value: Null()})
+			i++
+			continue
 		}
 
 		if hasDirective(trim, "@calc") {

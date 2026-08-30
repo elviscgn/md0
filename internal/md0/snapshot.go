@@ -107,6 +107,12 @@ func valueJSON(value Value) any {
 			items[i] = valueJSON(item)
 		}
 		return items
+	case ObjectKind:
+		object := make(map[string]any, len(value.Obj))
+		for key, item := range value.Obj {
+			object[key] = valueJSON(item)
+		}
+		return object
 	default:
 		return nil
 	}

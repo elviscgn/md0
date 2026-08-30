@@ -33,6 +33,14 @@ type CalcNode struct {
 
 func (n CalcNode) LineNo() int { return n.Line }
 
+type DataNode struct {
+	Line         int
+	Name, Format string
+	Value        Value
+}
+
+func (n DataNode) LineNo() int { return n.Line }
+
 type ShowNode struct {
 	Line   int
 	Source string

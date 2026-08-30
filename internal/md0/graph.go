@@ -83,6 +83,10 @@ func BuildDependencyGraph(doc *Document) (*DependencyGraph, error) {
 				if err := add(DependencyNode{ID: id, Kind: "input", Label: x.Name, Line: x.Line, Defines: x.Name}, deps, structural); err != nil {
 					return err
 				}
+			case DataNode:
+				if err := add(DependencyNode{ID: id, Kind: "data", Label: x.Name, Line: x.Line, Defines: x.Name}, nil, structural); err != nil {
+					return err
+				}
 			case CalcNode:
 				deps, err := ExprDependencies(x.Expr)
 				if err != nil {
@@ -191,6 +195,8 @@ func dependencyNodeID(n Node) string {
 	switch x := n.(type) {
 	case InputNode:
 		return "input:" + x.Name
+	case DataNode:
+		return "data:" + x.Name
 	case CalcNode:
 		return "calc:" + x.Name
 	case MarkdownNode:

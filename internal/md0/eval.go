@@ -88,6 +88,12 @@ func evalPlannedNode(node Node, r *EvalResult, overrides map[string]string) erro
 		}
 		r.Env[x.Name] = value
 		return nil
+	case DataNode:
+		if x.Value.Kind == NullKind {
+			return fmt.Errorf("line %d: data %s: no %s attachment was provided", x.Line, x.Name, x.Format)
+		}
+		r.Env[x.Name] = x.Value
+		return nil
 	case CalcNode:
 		value, err := x.Expr.Eval(r.Env)
 		if err != nil {
@@ -140,6 +146,8 @@ func evalPlannedNode(node Node, r *EvalResult, overrides map[string]string) erro
 func clearNodeState(node Node, r *EvalResult) {
 	switch x := node.(type) {
 	case InputNode:
+		delete(r.Env, x.Name)
+	case DataNode:
 		delete(r.Env, x.Name)
 	case CalcNode:
 		delete(r.Env, x.Name)

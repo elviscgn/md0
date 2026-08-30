@@ -19,6 +19,7 @@ type liveDocumentHandler struct {
 	addr          string
 	port          string
 	initialValues map[string]string
+	dataSpecs     []string
 	handler       http.Handler
 	seenRevision  string
 	revision      string
@@ -26,12 +27,19 @@ type liveDocumentHandler struct {
 }
 
 func newLiveDocumentHandler(path, addr string, initialValues map[string]string) (*liveDocumentHandler, error) {
+	return newLiveDocumentHandlerWithData(path, addr, initialValues, nil)
+}
+
+func newLiveDocumentHandlerWithData(path, addr string, initialValues map[string]string, dataSpecs []string) (*liveDocumentHandler, error) {
 	port, err := validateLoopbackAddress(addr)
 	if err != nil {
 		return nil, err
 	}
 	doc, err := ParseFile(path)
 	if err != nil {
+		return nil, err
+	}
+	if err := BindDataFiles(doc, dataSpecs); err != nil {
 		return nil, err
 	}
 	handler, err := newHandlerForAddrWithValues(doc, addr, initialValues)
@@ -44,6 +52,7 @@ func newLiveDocumentHandler(path, addr string, initialValues map[string]string) 
 		addr:          addr,
 		port:          port,
 		initialValues: copyStringMap(initialValues),
+		dataSpecs:     append([]string(nil), dataSpecs...),
 		handler:       handler,
 		seenRevision:  revision,
 		revision:      revision,
@@ -104,6 +113,13 @@ func (h *liveDocumentHandler) refresh() {
 	}
 	doc, err := ParseFile(h.path)
 	if err != nil {
+		h.mu.Lock()
+		h.seenRevision = revision
+		h.problem = FormatDiagnostic(h.path, err)
+		h.mu.Unlock()
+		return
+	}
+	if err := BindDataFiles(doc, h.dataSpecs); err != nil {
 		h.mu.Lock()
 		h.seenRevision = revision
 		h.problem = FormatDiagnostic(h.path, err)

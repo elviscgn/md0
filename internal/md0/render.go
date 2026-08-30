@@ -64,7 +64,7 @@ func renderNodes(b *strings.Builder, nodes []Node, r *EvalResult) error {
 }
 
 func renderNodeRegion(b *strings.Builder, n Node, r *EvalResult) error {
-	if _, invisible := n.(CalcNode); invisible {
+	if !isRenderableNode(n) {
 		return nil
 	}
 	id := dependencyNodeID(n)
@@ -154,8 +154,12 @@ func regionClass(n Node) string {
 }
 
 func isRenderableNode(n Node) bool {
-	_, invisible := n.(CalcNode)
-	return !invisible
+	switch n.(type) {
+	case CalcNode, DataNode:
+		return false
+	default:
+		return true
+	}
 }
 
 func renderNodeRegionString(n Node, r *EvalResult) (string, error) {

@@ -296,6 +296,63 @@ func (e callExpr) Eval(env map[string]Value) (Value, error) {
 			total /= float64(len(vals[0].List))
 		}
 		return Number(total), nil
+	case "get":
+		if len(vals) != 2 || vals[1].Kind != StringKind {
+			return Null(), fmt.Errorf("get expects an object and string key")
+		}
+		object, err := vals[0].AsObject()
+		if err != nil {
+			return Null(), err
+		}
+		value, ok := object[vals[1].Str]
+		if !ok {
+			return Null(), fmt.Errorf("object has no key %q", vals[1].Str)
+		}
+		return value, nil
+	case "columns", "rows":
+		if len(vals) != 1 {
+			return Null(), fmt.Errorf("%s expects one CSV attachment", e.name)
+		}
+		object, err := vals[0].AsObject()
+		if err != nil {
+			return Null(), err
+		}
+		value, ok := object[e.name]
+		if !ok || value.Kind != ListKind {
+			return Null(), fmt.Errorf("%s expects a CSV attachment", e.name)
+		}
+		return value, nil
+	case "column":
+		if len(vals) != 2 || vals[1].Kind != StringKind {
+			return Null(), fmt.Errorf("column expects a CSV attachment and column name")
+		}
+		object, err := vals[0].AsObject()
+		if err != nil {
+			return Null(), err
+		}
+		columns, columnsOK := object["columns"]
+		rows, rowsOK := object["rows"]
+		if !columnsOK || !rowsOK || columns.Kind != ListKind || rows.Kind != ListKind {
+			return Null(), fmt.Errorf("column expects a CSV attachment")
+		}
+		index := -1
+		for i, name := range columns.List {
+			if name.Kind == StringKind && name.Str == vals[1].Str {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			return Null(), fmt.Errorf("CSV attachment has no column %q", vals[1].Str)
+		}
+		result := make([]Value, len(rows.List))
+		for i, row := range rows.List {
+			if row.Kind != ListKind || index >= len(row.List) {
+				return Null(), fmt.Errorf("CSV attachment row %d is malformed", i+1)
+			}
+			result[i] = row.List[index]
+		}
+		return List(result), nil
 	default:
 		return Null(), fmt.Errorf("unknown function %q", e.name)
 	}

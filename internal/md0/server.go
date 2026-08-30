@@ -375,7 +375,11 @@ func ServeWithValues(doc *Document, addr string, initialValues map[string]string
 }
 
 func ServeFileWithValues(path, addr string, initialValues map[string]string) error {
-	handler, err := newLiveDocumentHandler(path, addr, initialValues)
+	return ServeFileWithOptions(path, addr, initialValues, nil)
+}
+
+func ServeFileWithOptions(path, addr string, initialValues map[string]string, dataSpecs []string) error {
+	handler, err := newLiveDocumentHandlerWithData(path, addr, initialValues, dataSpecs)
 	if err != nil {
 		return err
 	}
