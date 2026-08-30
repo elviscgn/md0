@@ -13,9 +13,34 @@ var (
 	calcRE  = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$`)
 )
 
+const maxExpressionTokens = 512
+
 type sourceLine struct {
 	no   int
 	text string
+}
+
+// parseExprBounded performs a complete lexical pass before invoking the
+// expression parser. This guarantees malformed characters are rejected before
+// parser state can advance, and caps expression complexity independently of
+// the document-size limit.
+func parseExprBounded(src string) (Expr, error) {
+	l := lexer{src: src}
+	tokens := 0
+	for {
+		t, err := l.next()
+		if err != nil {
+			return nil, err
+		}
+		if t.typ == tokEOF {
+			break
+		}
+		tokens++
+		if tokens > maxExpressionTokens {
+			return nil, fmt.Errorf("expression exceeds %d-token limit", maxExpressionTokens)
+		}
+	}
+	return ParseExpr(src)
 }
 
 func ParseFile(path string) (*Document, error) {
@@ -118,7 +143,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			m := inputRE.FindStringSubmatch(rest)
 			if m != nil {
 				flush()
-				e, err := ParseExpr(m[3])
+				e, err := parseExprBounded(m[3])
 				if err != nil {
 					return nil, i, fmt.Errorf("line %d: invalid @input default: %w", line.no, err)
 				}
@@ -134,7 +159,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			if m == nil {
 				return nil, i, fmt.Errorf("line %d: expected @calc name = expression", line.no)
 			}
-			e, err := ParseExpr(m[2])
+			e, err := parseExprBounded(m[2])
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid @calc expression: %w", line.no, err)
 			}
@@ -145,7 +170,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 		if strings.HasPrefix(trim, "@show ") {
 			flush()
 			src := strings.TrimSpace(strings.TrimPrefix(trim, "@show "))
-			e, err := ParseExpr(src)
+			e, err := parseExprBounded(src)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid @show expression: %w", line.no, err)
 			}
@@ -156,7 +181,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 		if strings.HasPrefix(trim, "@assert ") {
 			flush()
 			src := strings.TrimSpace(strings.TrimPrefix(trim, "@assert "))
-			e, err := ParseExpr(src)
+			e, err := parseExprBounded(src)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid @assert expression: %w", line.no, err)
 			}
@@ -176,7 +201,7 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 		if strings.HasPrefix(trim, "@when ") {
 			flush()
 			src := strings.TrimSpace(strings.TrimPrefix(trim, "@when "))
-			e, err := ParseExpr(src)
+			e, err := parseExprBounded(src)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid @when expression: %w", line.no, err)
 			}
@@ -207,11 +232,11 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			if !okL || !okV {
 				return nil, i, fmt.Errorf("line %d: @chart requires labels and values", line.no)
 			}
-			labels, err := ParseExpr(labelsSrc)
+			labels, err := parseExprBounded(labelsSrc)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid chart labels: %w", line.no, err)
 			}
-			values, err := ParseExpr(valuesSrc)
+			values, err := parseExprBounded(valuesSrc)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid chart values: %w", line.no, err)
 			}
@@ -234,11 +259,11 @@ func parseNodes(lines []sourceLine, start int, stopAtEnd bool, depth int) ([]Nod
 			if !okC || !okR {
 				return nil, i, fmt.Errorf("line %d: @table requires columns and rows", line.no)
 			}
-			c, err := ParseExpr(csrc)
+			c, err := parseExprBounded(csrc)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid table columns: %w", line.no, err)
 			}
-			r, err := ParseExpr(rsrc)
+			r, err := parseExprBounded(rsrc)
 			if err != nil {
 				return nil, i, fmt.Errorf("line %d: invalid table rows: %w", line.no, err)
 			}
