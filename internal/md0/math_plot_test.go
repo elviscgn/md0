@@ -18,6 +18,16 @@ $$`)
 	}
 }
 
+func TestMathRenderingEscapesMarkup(t *testing.T) {
+	got := renderMarkdown(`$x < script > y$`)
+	if strings.Contains(strings.ToLower(got), "<script") {
+		t.Fatalf("math renderer emitted executable markup: %s", got)
+	}
+	if !strings.Contains(got, "&lt;") || !strings.Contains(got, "&gt;") {
+		t.Fatalf("math renderer did not escape operators safely: %s", got)
+	}
+}
+
 func TestInlineMathDoesNotTreatOrdinaryCurrencyAsFormula(t *testing.T) {
 	got := renderInline("Cost is $5 and $10 later")
 	if strings.Contains(got, "<math") {
@@ -81,12 +91,25 @@ func TestReactivePlotChangesWithInput(t *testing.T) {
 	}
 }
 
-func TestPlotSupportsMultipleCurvesAndPowerOperator(t *testing.T) {
-	got := renderPlotFence("title = Functions\ny = x^2\nlabel = quadratic\ny2 = sin(x)\nlabel2 = sine\nx = [-3, 3]\nsamples = 64")
+func TestPlotSupportsMultipleCurvesAndPow(t *testing.T) {
+	got := renderPlotFence("title = Functions\ny = pow(x, 2)\nlabel = quadratic\ny2 = sin(x)\nlabel2 = sine\nx = [-3, 3]\nsamples = 64")
 	for _, want := range []string{"quadratic", "sine", "var(--chart-0)", "var(--chart-1)", "<path"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("multi-curve plot missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestPlotEscapesTitleAndLabels(t *testing.T) {
+	got := renderPlotFence("title = <script>alert(1)</script>\ny = x\nlabel = <img src=x onerror=alert(1)>\nx = [-1, 1]")
+	lower := strings.ToLower(got)
+	for _, unsafe := range []string{"<script", "<img", "onerror="} {
+		if strings.Contains(lower, unsafe) {
+			t.Fatalf("plot emitted unsafe markup %q: %s", unsafe, got)
+		}
+	}
+	if !strings.Contains(got, "&lt;script&gt;") || !strings.Contains(got, "&lt;img") {
+		t.Fatalf("plot title/label were not escaped: %s", got)
 	}
 }
 
@@ -98,5 +121,32 @@ func TestPlotFailsClosedForUnsafeOrUnboundedConfiguration(t *testing.T) {
 	oversampled := renderPlotFence("y = x\nsamples = 1025")
 	if !strings.Contains(oversampled, "samples must be an integer from 32 to 1024") {
 		t.Fatalf("oversampled plot was not rejected: %s", oversampled)
+	}
+}
+
+func TestMathAndPlotSurviveStaticPageRendering(t *testing.T) {
+	source := "md0: 0.1\nScale: @input scale number = 2\n\n$$f(x) = {{ scale }}x^2$$\n\n```plot\ny = {{ scale }} * pow(x, 2)\nx = [-2, 2]\nsamples = 64\n```"
+	doc, err := ParseString("static-math.md", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Evaluate(doc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err := RenderFragment(doc, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := RenderStaticPage("Static math", fragment)
+	for _, want := range []string{"<!doctype html>", "<math", "<msup>", "<svg", "<path"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("static page missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{"katex", "mathjax", "plotly", "d3.js"} {
+		if strings.Contains(strings.ToLower(page), forbidden) {
+			t.Fatalf("static page unexpectedly references %q", forbidden)
+		}
 	}
 }
