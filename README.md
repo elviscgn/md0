@@ -151,9 +151,11 @@ md0 inspect document.md
 md0 version
 ```
 
-Bare `md0 document.md` is the primary interactive experience: it opens one persistent terminal app. Press `e` to enter the editor, `Esc` to return home, `o` to start or reopen the live viewer, `r` to render, `i` to inspect, `v` to validate, and `q`/`Esc` on the home screen to exit md0. The editor has line numbers, md0 syntax highlighting, cursor-local completion, snippets, and `Ctrl+S` saving; with unsaved edits, the first `Esc` warns and the second discards. `md0 edit` remains a direct editor shortcut.
+Bare `md0 document.md` is the primary interactive experience: it opens one persistent terminal app. Press `e` to enter the editor, `Esc` to return home, `o` to start or reopen the live viewer, `r` to render, `i` to inspect, `v` to validate, `?` for help, and `q`/`Esc` on the home screen to exit md0.
 
-`render` creates static HTML and can record a durable snapshot containing input values, source and attachment hashes, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Use Settings → Edit source inside that viewer for optional browser editing. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
+The terminal editor has line numbers, md0 syntax highlighting, cursor-local completion, snippets, bounded undo/redo (`Ctrl+Z` / `Ctrl+Y`), find (`Ctrl+F`), and live autosave after a short pause. `Ctrl+S` forces an immediate save. If the browser viewer is running, those source saves are picked up by its live watcher so terminal edits appear in the rendered document automatically. Revision checks reject stale writes instead of overwriting an external edit. `md0 edit` remains a direct editor shortcut.
+
+`render` creates static HTML and can record a durable snapshot containing input values, source and attachment hashes, language/runtime versions, assertions, and generated output. `open` watches the source file, reports malformed edits without discarding the last valid page, and reloads automatically after recovery. Use Settings → Edit source inside that viewer for optional browser editing; browser source drafts remain in-memory until explicit Save. Each browser page gets an isolated reactive session plus a cryptographically random capability token for runtime and export requests.
 
 ## md0/PURE
 
