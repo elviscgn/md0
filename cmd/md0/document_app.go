@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -12,7 +13,11 @@ import (
 	core "github.com/elviscgn/md0/internal/md0"
 )
 
-const documentAppViewerAddr = "127.0.0.1:8080"
+const (
+	documentAppViewerHost      = "127.0.0.1"
+	documentAppViewerPortStart = 8080
+	documentAppViewerPortEnd   = 8099
+)
 
 type documentApp struct {
 	path          string
@@ -21,6 +26,7 @@ type documentApp struct {
 	status        string
 	statusError   bool
 	viewerStarted bool
+	viewerAddr    string
 	viewerErr     chan error
 }
 
@@ -77,6 +83,11 @@ func (a *documentApp) run() error {
 			}
 		case launcherKeyQuit:
 			return nil
+		case launcherKeyHelp:
+			if err := a.showHelp(); err != nil {
+				a.status = err.Error()
+				a.statusError = true
+			}
 		default:
 			if action, ok := launcherActionForKey(key); ok {
 				quit, err := a.activate(action)
@@ -121,10 +132,10 @@ func (a *documentApp) drawHome() {
 	width, height := terminalSize(os.Stdout)
 	width = max(width, 40)
 	height = max(height, 10)
-	status := " Esc/q exits md0"
+	status := " ? help · Esc/q exits md0"
 	style := ansiDim
 	if a.viewerStarted {
-		status = " viewer live · http://" + documentAppViewerAddr + " · Esc/q exits md0"
+		status = " ● viewer live · http://" + a.viewerAddr + " · ? help · Esc/q exits md0"
 	}
 	if a.status != "" {
 		status = " " + a.status
@@ -149,14 +160,15 @@ func (a *documentApp) runEditor() error {
 	if len(data) > 2*1024*1024 {
 		return errors.New("document exceeds 2 MiB limit")
 	}
-	editor := &terminalEditorUX{terminalEditor: newTerminalEditor(a.path, string(data), newTerminalUI(os.Stdout))}
+	editor := newTerminalEditorSession(a.path, string(data), newTerminalUI(os.Stdout))
+	defer editor.close()
 	for {
-		editor.drawPolishedUX("back")
-		event, err := readEditorEvent(a.reader)
+		editor.draw("back")
+		event, err := readEditorSessionEvent(a.reader)
 		if err != nil {
 			return err
 		}
-		back, err := editor.handleUXEscape(event)
+		back, err := editor.handle(event)
 		if err != nil {
 			editor.status = err.Error()
 			editor.statusError = true
@@ -170,8 +182,8 @@ func (a *documentApp) runEditor() error {
 
 func (a *documentApp) openViewer() error {
 	if a.viewerStarted {
-		scheduleBrowserOpen(documentAppViewerAddr, false)
-		a.status = "viewer opened in browser"
+		scheduleBrowserOpen(a.viewerAddr, false)
+		a.status = "viewer opened · http://" + a.viewerAddr
 		return nil
 	}
 	doc, err := core.ParseFile(a.path)
@@ -181,23 +193,42 @@ func (a *documentApp) openViewer() error {
 	if _, err := core.Evaluate(doc, nil); err != nil {
 		return fmt.Errorf("cannot open viewer: %s", core.FormatDiagnostic(a.path, err))
 	}
+	addr, err := nextDocumentViewerAddr()
+	if err != nil {
+		return err
+	}
 
 	a.viewerStarted = true
+	a.viewerAddr = addr
 	go func() {
-		err := core.ServeFileWorkspaceWithOptions(a.path, documentAppViewerAddr, nil, nil)
+		err := core.ServeFileWorkspaceWithOptions(a.path, addr, nil, nil)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			a.viewerErr <- err
 		}
 	}()
-	scheduleBrowserOpen(documentAppViewerAddr, false)
-	a.status = "viewer started · http://" + documentAppViewerAddr
+	scheduleBrowserOpen(addr, false)
+	a.status = "viewer started · http://" + addr
 	return nil
+}
+
+func nextDocumentViewerAddr() (string, error) {
+	for port := documentAppViewerPortStart; port <= documentAppViewerPortEnd; port++ {
+		addr := fmt.Sprintf("%s:%d", documentAppViewerHost, port)
+		listener, err := net.Listen("tcp", addr)
+		if err != nil {
+			continue
+		}
+		_ = listener.Close()
+		return addr, nil
+	}
+	return "", fmt.Errorf("no free loopback viewer port between %d and %d", documentAppViewerPortStart, documentAppViewerPortEnd)
 }
 
 func (a *documentApp) pollViewerError() {
 	select {
 	case err := <-a.viewerErr:
 		a.viewerStarted = false
+		a.viewerAddr = ""
 		a.status = "viewer stopped: " + err.Error()
 		a.statusError = true
 	default:
@@ -253,6 +284,39 @@ func (a *documentApp) inspectDocument() error {
 		return a.showDiagnostic("Inspect failed", err)
 	}
 	return a.showText("Inspect", core.Inspect(doc))
+}
+
+func (a *documentApp) showHelp() error {
+	const help = `HOME
+  ↑/↓ or j/k   move selection
+  Enter        open selected action
+  e            edit document
+  o            open/reopen live viewer
+  r            render standalone HTML
+  i            inspect dependency graph + authority
+  v            validate document
+  ?            show this help
+  Esc / q      exit md0
+
+EDITOR
+  Esc          save pending changes and return home
+  Ctrl+S       save immediately
+  Ctrl+Z       undo
+  Ctrl+Y       redo
+  Ctrl+F       find in document
+  Ctrl+Space   completion
+  Tab          indent / accept completion
+  Shift+Tab    outdent
+  ↑/↓          cursor / completion navigation
+
+LIVE EDITING
+  Changes autosave after a short pause. If the browser viewer is open,
+  its existing source watcher sees those saves and refreshes the document.
+  External disk edits are protected by revision checks instead of overwritten.
+
+The md0/PURE document language still has no ambient filesystem, network,
+process, environment, package, native-code, or dynamic-eval authority.`
+	return a.showText("Help", help)
 }
 
 func (a *documentApp) showDiagnostic(title string, err error) error {
