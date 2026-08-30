@@ -560,6 +560,7 @@ func (a *editorAutosaver) Stop() {
 
 func (a *editorAutosaver) run(revision [sha256.Size]byte) {
 	var pending string
+	var hasPending bool
 	var timer *time.Timer
 	var timerC <-chan time.Time
 
@@ -631,18 +632,21 @@ func (a *editorAutosaver) run(revision [sha256.Size]byte) {
 			if command.force {
 				stopTimer()
 				pending = ""
+				hasPending = false
 				command.response <- write(command.source)
 				continue
 			}
 			pending = command.source
+			hasPending = true
 			resetTimer()
 		case <-timerC:
 			timerC = nil
-			if pending == "" {
+			if !hasPending {
 				continue
 			}
 			result := write(pending)
 			pending = ""
+			hasPending = false
 			a.results <- result
 		}
 	}
