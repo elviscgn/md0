@@ -1,0 +1,4 @@
+service,availability_percent,latency_ms,error_budget_burn
+checkout-api,99.82,284,2.4
+payment-adapter,99.95,231,1.2
+inventory-reservation,99.91,198,0.9
