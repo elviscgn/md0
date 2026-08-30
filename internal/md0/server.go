@@ -5,12 +5,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 func Serve(doc *Document, addr string) error {
+	session, err := NewReactiveSession(doc)
+	if err != nil {
+		return err
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		res, err := Evaluate(doc, nil)
+		res, err := session.Reset()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -30,7 +37,7 @@ func Serve(doc *Document, addr string) error {
 			http.Error(w, "invalid input payload", 400)
 			return
 		}
-		res, err := Evaluate(doc, values)
+		res, stats, err := session.Update(values)
 		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return
@@ -41,6 +48,8 @@ func Serve(doc *Document, addr string) error {
 			return
 		}
 		w.Header().Set("content-type", "text/html; charset=utf-8")
+		w.Header().Set("X-MD0-Changed", strings.Join(stats.Changed, ","))
+		w.Header().Set("X-MD0-Recomputed", strconv.Itoa(len(stats.Recomputed)))
 		io.WriteString(w, frag)
 	})
 	fmt.Printf("md0 serving %s at http://%s\n", doc.Path, addr)

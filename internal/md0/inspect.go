@@ -28,9 +28,26 @@ func Inspect(doc *Document) string {
 		}
 	}
 	walk(doc.Nodes)
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "Profile             md0/PURE\n")
 	fmt.Fprintf(&b, "Inputs              %d\nCalculations        %d\nAssertions          %d\nCharts              %d\nTables              %d\nConditions          %d\n\n", counts["inputs"], counts["calculations"], counts["assertions"], counts["charts"], counts["tables"], counts["conditions"])
+
+	graph, err := BuildDependencyGraph(doc)
+	b.WriteString("Dependency graph\n")
+	if err != nil {
+		fmt.Fprintf(&b, "  error             %s\n\n", err)
+	} else {
+		fmt.Fprintf(&b, "  Values            %d\n", len(graph.Producers))
+		fmt.Fprintf(&b, "  Nodes             %d\n", len(graph.Nodes))
+		fmt.Fprintf(&b, "  Edges             %d\n", graph.EdgeCount)
+		fmt.Fprintf(&b, "  Cycles            0\n")
+		for _, edge := range graph.EdgeLines() {
+			fmt.Fprintf(&b, "  %s\n", edge)
+		}
+		b.WriteByte('\n')
+	}
+
 	b.WriteString("Document authority\n")
 	b.WriteString("  Filesystem        no\n  Network           no\n  Shell/processes   no\n  Environment       no\n  Package imports   no\n  Native code       no\n  Dynamic eval      no\n")
 	return b.String()

@@ -18,16 +18,29 @@ type EvalResult struct {
 	Env             map[string]Value
 	Assertions      []AssertionResult
 	AssertionByLine map[int]AssertionResult
+	WhenByLine      map[int]bool
 }
 
 func Evaluate(doc *Document, overrides map[string]string) (*EvalResult, error) {
-	r := &EvalResult{Env: map[string]Value{}, AssertionByLine: map[int]AssertionResult{}}
+	if _, err := BuildDependencyGraph(doc); err != nil {
+		return nil, err
+	}
+	return evaluateDocument(doc, overrides)
+}
+
+func evaluateDocument(doc *Document, overrides map[string]string) (*EvalResult, error) {
+	r := &EvalResult{
+		Env:             map[string]Value{},
+		AssertionByLine: map[int]AssertionResult{},
+		WhenByLine:      map[int]bool{},
+	}
 	if overrides == nil {
 		overrides = map[string]string{}
 	}
 	if err := evalNodes(doc.Nodes, r, overrides); err != nil {
 		return nil, err
 	}
+	rebuildAssertions(doc.Nodes, r)
 	return r, nil
 }
 
@@ -69,9 +82,7 @@ func evalNodes(nodes []Node, r *EvalResult, overrides map[string]string) error {
 			if err != nil {
 				return fmt.Errorf("line %d: assert must be boolean: %w", x.Line, err)
 			}
-			a := AssertionResult{Line: x.Line, Source: x.Source, Message: x.Message, Passed: b}
-			r.Assertions = append(r.Assertions, a)
-			r.AssertionByLine[x.Line] = a
+			r.AssertionByLine[x.Line] = AssertionResult{Line: x.Line, Source: x.Source, Message: x.Message, Passed: b}
 		case WhenNode:
 			v, err := x.Expr.Eval(r.Env)
 			if err != nil {
@@ -81,6 +92,7 @@ func evalNodes(nodes []Node, r *EvalResult, overrides map[string]string) error {
 			if err != nil {
 				return fmt.Errorf("line %d: when must be boolean: %w", x.Line, err)
 			}
+			r.WhenByLine[x.Line] = b
 			if b {
 				if err := evalNodes(x.Nodes, r, overrides); err != nil {
 					return err
@@ -99,6 +111,26 @@ func evalNodes(nodes []Node, r *EvalResult, overrides map[string]string) error {
 		}
 	}
 	return nil
+}
+
+func rebuildAssertions(nodes []Node, r *EvalResult) {
+	r.Assertions = r.Assertions[:0]
+	var walk func([]Node)
+	walk = func(current []Node) {
+		for _, raw := range current {
+			switch x := raw.(type) {
+			case AssertNode:
+				if assertion, ok := r.AssertionByLine[x.Line]; ok {
+					r.Assertions = append(r.Assertions, assertion)
+				}
+			case WhenNode:
+				if r.WhenByLine[x.Line] {
+					walk(x.Nodes)
+				}
+			}
+		}
+	}
+	walk(nodes)
 }
 
 func parseInputValue(typ, raw string) (Value, error) {
@@ -134,6 +166,7 @@ func parseInputValue(typ, raw string) (Value, error) {
 		return Null(), fmt.Errorf("unknown input type %q", typ)
 	}
 }
+
 func validateInputType(typ string, v Value) error {
 	switch strings.ToLower(typ) {
 	case "number", "percent", "currency", "integer", "duration":
@@ -190,6 +223,7 @@ func validateChart(x ChartNode, env map[string]Value) error {
 	}
 	return nil
 }
+
 func validateTable(x TableNode, env map[string]Value) error {
 	cv, err := x.Columns.Eval(env)
 	if err != nil {
