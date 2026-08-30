@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -23,6 +24,12 @@ const (
 type dataDeclaration struct {
 	format string
 	line   int
+}
+
+type boundData struct {
+	value  Value
+	file   string
+	sha256 string
 }
 
 func BindDataFiles(doc *Document, specs []string) error {
@@ -67,14 +74,14 @@ func BindDataFiles(doc *Document, specs []string) error {
 		paths[name] = path
 	}
 
-	values := map[string]Value{}
+	values := map[string]boundData{}
 	totalBytes := 0
 	for name, declaration := range declarations {
 		path, ok := paths[name]
 		if !ok {
 			return fmt.Errorf("line %d: data %s: provide --data %s=FILE", declaration.line, name, name)
 		}
-		value, size, err := loadDataFile(path, declaration.format)
+		value, size, sha256, err := loadDataFile(path, declaration.format)
 		if err != nil {
 			return fmt.Errorf("data %s: %w", name, err)
 		}
@@ -82,7 +89,7 @@ func BindDataFiles(doc *Document, specs []string) error {
 		if totalBytes > maxDataTotalBytes {
 			return fmt.Errorf("data attachments exceed 8 MiB combined limit")
 		}
-		values[name] = value
+		values[name] = boundData{value: value, file: filepath.Base(path), sha256: sha256}
 	}
 
 	var bind func([]Node)
@@ -90,7 +97,10 @@ func BindDataFiles(doc *Document, specs []string) error {
 		for i, raw := range nodes {
 			switch node := raw.(type) {
 			case DataNode:
-				node.Value = values[node.Name]
+				bound := values[node.Name]
+				node.Value = bound.value
+				node.FileName = bound.file
+				node.FileSHA256 = bound.sha256
 				nodes[i] = node
 			case WhenNode:
 				bind(node.Nodes)
@@ -102,27 +112,27 @@ func BindDataFiles(doc *Document, specs []string) error {
 	return nil
 }
 
-func loadDataFile(path, format string) (Value, int, error) {
+func loadDataFile(path, format string) (Value, int, string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return Null(), 0, err
+		return Null(), 0, "", err
 	}
 	if info.Size() > maxDataFileBytes {
-		return Null(), 0, fmt.Errorf("%s exceeds 2 MiB attachment limit", path)
+		return Null(), 0, "", fmt.Errorf("%s exceeds 2 MiB attachment limit", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Null(), 0, err
+		return Null(), 0, "", err
 	}
 	switch format {
 	case "json":
 		value, err := decodeDataJSON(data)
-		return value, len(data), err
+		return value, len(data), sourceSHA256(string(data)), err
 	case "csv":
 		value, err := decodeDataCSV(data)
-		return value, len(data), err
+		return value, len(data), sourceSHA256(string(data)), err
 	default:
-		return Null(), 0, fmt.Errorf("unsupported attachment format %q", format)
+		return Null(), 0, "", fmt.Errorf("unsupported attachment format %q", format)
 	}
 }
 

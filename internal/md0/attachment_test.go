@@ -39,6 +39,13 @@ configuration loaded
 	if graph.Producers["config"] != "data:config" {
 		t.Fatalf("data producer=%q", graph.Producers["config"])
 	}
+	snapshot, err := BuildSnapshot(doc, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Data) != 1 || snapshot.Data[0].Name != "config" || snapshot.Data[0].File != "config.json" || len(snapshot.Data[0].SHA256) != 64 {
+		t.Fatalf("snapshot data provenance=%#v", snapshot.Data)
+	}
 }
 
 func TestCSVDataAttachmentSupportsTablesAndColumns(t *testing.T) {

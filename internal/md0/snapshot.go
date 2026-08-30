@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -25,11 +26,19 @@ type SnapshotOutput struct {
 	Assertions []AssertionResult `json:"assertions,omitempty"`
 }
 
+type SnapshotData struct {
+	Name   string `json:"name"`
+	Format string `json:"format"`
+	File   string `json:"file"`
+	SHA256 string `json:"sha256"`
+}
+
 type Snapshot struct {
 	Schema          string         `json:"schema"`
 	MD0Version      string         `json:"md0_version"`
 	LanguageVersion string         `json:"language_version"`
 	Source          SnapshotSource `json:"source"`
+	Data            []SnapshotData `json:"data,omitempty"`
 	Values          map[string]any `json:"values"`
 	Output          SnapshotOutput `json:"output"`
 }
@@ -47,12 +56,33 @@ func BuildSnapshot(doc *Document, result *EvalResult) (*Snapshot, error) {
 			Name:   filepath.Base(doc.Path),
 			SHA256: sourceSHA256(doc.Source),
 		},
+		Data:   snapshotData(doc.Nodes),
 		Values: inputJSONValues(doc.Nodes, result),
 		Output: SnapshotOutput{
 			HTML:       RenderStaticPage(filepath.Base(doc.Path), fragment),
 			Assertions: append([]AssertionResult(nil), result.Assertions...),
 		},
 	}, nil
+}
+
+func snapshotData(nodes []Node) []SnapshotData {
+	items := []SnapshotData{}
+	var walk func([]Node)
+	walk = func(current []Node) {
+		for _, raw := range current {
+			switch node := raw.(type) {
+			case DataNode:
+				if node.FileSHA256 != "" {
+					items = append(items, SnapshotData{Name: node.Name, Format: node.Format, File: node.FileName, SHA256: node.FileSHA256})
+				}
+			case WhenNode:
+				walk(node.Nodes)
+			}
+		}
+	}
+	walk(nodes)
+	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	return items
 }
 
 func sourceSHA256(source string) string {
