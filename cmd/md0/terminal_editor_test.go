@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -37,12 +38,14 @@ func TestTerminalEditorEditsAndSavesInPlace(t *testing.T) {
 	if string(got) != editor.source() || editor.dirty {
 		t.Fatalf("disk=%q source=%q dirty=%v", got, editor.source(), editor.dirty)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Fatalf("permissions changed to %o", info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0600 {
+			t.Fatalf("permissions changed to %o", info.Mode().Perm())
+		}
 	}
 }
 
