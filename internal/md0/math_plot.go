@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	goparser "go/parser"
-	"go/token"
+	gotoken "go/token"
 	"html"
 	"math"
 	"strconv"
@@ -489,7 +489,7 @@ func evalPlotAST(expr ast.Expr, x float64) (float64, error) {
 	eval = func(node ast.Expr) (float64, error) {
 		switch n := node.(type) {
 		case *ast.BasicLit:
-			if n.Kind != token.INT && n.Kind != token.FLOAT {
+			if n.Kind != gotoken.INT && n.Kind != gotoken.FLOAT {
 				return 0, fmt.Errorf("only numeric literals are allowed")
 			}
 			v, err := strconv.ParseFloat(n.Value, 64)
@@ -516,9 +516,9 @@ func evalPlotAST(expr ast.Expr, x float64) (float64, error) {
 				return 0, err
 			}
 			switch n.Op {
-			case token.ADD:
+			case gotoken.ADD:
 				return v, nil
-			case token.SUB:
+			case gotoken.SUB:
 				return -v, nil
 			default:
 				return 0, fmt.Errorf("unsupported unary operator %s", n.Op)
@@ -534,23 +534,23 @@ func evalPlotAST(expr ast.Expr, x float64) (float64, error) {
 			}
 			var v float64
 			switch n.Op {
-			case token.ADD:
+			case gotoken.ADD:
 				v = a + b
-			case token.SUB:
+			case gotoken.SUB:
 				v = a - b
-			case token.MUL:
+			case gotoken.MUL:
 				v = a * b
-			case token.QUO:
+			case gotoken.QUO:
 				if b == 0 {
 					return 0, fmt.Errorf("division by zero")
 				}
 				v = a / b
-			case token.REM:
+			case gotoken.REM:
 				if b == 0 {
 					return 0, fmt.Errorf("modulo by zero")
 				}
 				v = math.Mod(a, b)
-			case token.XOR:
+			case gotoken.XOR:
 				v = math.Pow(a, b)
 			default:
 				return 0, fmt.Errorf("unsupported operator %s", n.Op)
