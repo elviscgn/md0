@@ -357,6 +357,26 @@ func newHandlerForAddrWithValues(doc *Document, addr string, initialValues map[s
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, filepath.Base(doc.Path)))
 		_, _ = io.WriteString(w, source)
 	})
+	mux.HandleFunc("POST /docx", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		session, ok := store.get(r.Header.Get("X-MD0-Token"))
+		if !ok {
+			writePatchError(w, http.StatusForbidden, "invalid or expired runtime token", "")
+			return
+		}
+		if err := requireEmptyRequestBody(w, r); err != nil {
+			writePatchError(w, http.StatusBadRequest, err.Error(), "")
+			return
+		}
+		data, err := MarshalDOCX(doc, session.Snapshot())
+		if err != nil {
+			writePatchError(w, http.StatusInternalServerError, err.Error(), "")
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, docxFilename(doc.Path)))
+		_, _ = w.Write(data)
+	})
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setRuntimeSecurityHeaders(w)
