@@ -102,6 +102,10 @@ func normalizeCodeSpan(s string) string {
 }
 
 func renderMarkdown(s string) string {
+	return renderMarkdownWithPlotValues(s, nil)
+}
+
+func renderMarkdownWithPlotValues(s string, plotValues map[string]Value) string {
 	lines := strings.Split(s, "\n")
 	var out strings.Builder
 	var fence *markdownFence
@@ -144,7 +148,7 @@ func renderMarkdown(s string) string {
 		if fence != nil {
 			if isFenceClose(line, *fence) {
 				if fenceKind == "plot" {
-					out.WriteString(renderPlotFence(semanticFence.String()))
+					out.WriteString(renderPlotFenceWithValues(semanticFence.String(), plotValues))
 					out.WriteByte('\n')
 					semanticFence.Reset()
 				} else {
@@ -243,7 +247,7 @@ func renderMarkdown(s string) string {
 	}
 	if fence != nil {
 		if fenceKind == "plot" {
-			out.WriteString(renderPlotFence(semanticFence.String()))
+			out.WriteString(renderPlotFenceWithValues(semanticFence.String(), plotValues))
 		} else {
 			out.WriteString("</code></pre>\n")
 		}

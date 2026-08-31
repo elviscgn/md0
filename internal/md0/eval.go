@@ -72,6 +72,9 @@ func evaluateWithPlan(doc *Document, plan *EvaluationPlan, overrides map[string]
 func evalPlannedNode(node Node, r *EvalResult, overrides map[string]string) error {
 	switch x := node.(type) {
 	case MarkdownNode:
+		if err := validateMarkdownPlots(x.Text, r.Env); err != nil {
+			return fmt.Errorf("line %d: plot: %w", x.Line, err)
+		}
 		return nil
 	case InputNode:
 		var value Value

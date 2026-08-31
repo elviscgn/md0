@@ -66,7 +66,7 @@ func BuildDependencyGraph(doc *Document) (*DependencyGraph, error) {
 			case MarkdownNode:
 				deps, err := markdownDependencies(x.Text)
 				if err != nil {
-					return fmt.Errorf("line %d: interpolation dependency: %w", x.Line, err)
+					return fmt.Errorf("line %d: markdown dependency: %w", x.Line, err)
 				}
 				label := fmt.Sprintf("markdown@%d", x.Line)
 				if len(deps) > 0 {
@@ -271,7 +271,15 @@ func ExprDependencies(expr Expr) ([]string, error) {
 }
 
 func markdownDependencies(text string) ([]string, error) {
-	return markdownInterpolationDependencies(text)
+	interpolations, err := markdownInterpolationDependencies(text)
+	if err != nil {
+		return nil, fmt.Errorf("interpolation dependency: %w", err)
+	}
+	plots, err := markdownPlotDependencies(text)
+	if err != nil {
+		return nil, fmt.Errorf("plot dependency: %w", err)
+	}
+	return uniqueSorted(append(interpolations, plots...)), nil
 }
 
 func uniqueSorted(values []string) []string {

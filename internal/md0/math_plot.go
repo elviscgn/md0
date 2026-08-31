@@ -4,19 +4,24 @@ import (
 	"fmt"
 	"go/ast"
 	goparser "go/parser"
+	goscanner "go/scanner"
 	gotoken "go/token"
 	"html"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
 )
 
 const (
-	defaultPlotSamples = 320
-	minPlotSamples     = 32
-	maxPlotSamples     = 1024
-	maxPlotCurves      = 4
+	defaultPlotSamples     = 320
+	minPlotSamples         = 32
+	maxPlotSamples         = 1024
+	maxPlotCurves          = 4
+	maxPlotExpressionBytes = 16 * 1024
+	maxPlotExpressionNodes = 512
+	maxPlotExpressionDepth = 128
 )
 
 func renderInlineMath(src string) string {
@@ -258,8 +263,26 @@ var mathFunctions = map[string]struct{}{
 	"sin": {}, "cos": {}, "tan": {}, "asin": {}, "acos": {}, "atan": {}, "log": {}, "ln": {}, "exp": {},
 }
 
+var plotCurveDeclarationRE = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)$`)
+
+var plotConfigKeys = map[string]struct{}{
+	"title": {}, "x": {}, "samples": {},
+	"y": {}, "y2": {}, "y3": {}, "y4": {},
+	"label": {}, "label2": {}, "label3": {}, "label4": {},
+}
+
+var plotFunctionNames = map[string]struct{}{
+	"sin": {}, "cos": {}, "tan": {}, "asin": {}, "acos": {}, "atan": {},
+	"sqrt": {}, "abs": {}, "exp": {}, "log": {}, "ln": {}, "log10": {},
+	"floor": {}, "ceil": {}, "round": {}, "pow": {}, "min": {}, "max": {},
+}
+
 func renderPlotFence(src string) string {
-	plot, err := parsePlotFence(src)
+	return renderPlotFenceWithValues(src, nil)
+}
+
+func renderPlotFenceWithValues(src string, values map[string]Value) string {
+	plot, err := parsePlotFenceWithValues(src, values)
 	if err != nil {
 		return `<div class="md0-plot-error" role="alert" style="margin:1rem 0;padding:.7rem .8rem;border-left:2px solid var(--red);color:var(--red);font-family:var(--md0-font-sans)">plot: ` + html.EscapeString(err.Error()) + `</div>`
 	}
@@ -272,6 +295,7 @@ type plotSpec struct {
 	xmax    float64
 	samples int
 	curves  []plotCurve
+	values  map[string]Value
 }
 
 type plotCurve struct {
@@ -280,8 +304,26 @@ type plotCurve struct {
 	expr  ast.Expr
 }
 
-func parsePlotFence(src string) (*plotSpec, error) {
-	cfg := map[string]string{}
+type plotSourceEntry struct {
+	value string
+	line  int
+}
+
+type plotCurveSource struct {
+	name  string
+	value string
+	line  int
+	named bool
+}
+
+type parsedPlotSource struct {
+	config map[string]plotSourceEntry
+	named  []plotCurveSource
+}
+
+func parsePlotSource(src string) (*parsedPlotSource, error) {
+	parsed := &parsedPlotSource{config: map[string]plotSourceEntry{}}
+	named := map[string]int{}
 	for i, line := range strings.Split(src, "\n") {
 		trim := strings.TrimSpace(line)
 		if trim == "" || strings.HasPrefix(trim, "#") {
@@ -293,17 +335,99 @@ func parsePlotFence(src string) (*plotSpec, error) {
 		}
 		key := strings.TrimSpace(trim[:eq])
 		value := strings.TrimSpace(trim[eq+1:])
-		if _, exists := cfg[key]; exists {
+		if match := plotCurveDeclarationRE.FindStringSubmatch(key); match != nil {
+			name, parameter := match[1], match[2]
+			if parameter != "x" {
+				return nil, fmt.Errorf("line %d: named curve %s(%s) must use x as its parameter", i+1, name, parameter)
+			}
+			if isReservedPlotName(name) {
+				return nil, fmt.Errorf("line %d: named curve %q conflicts with a reserved plot name", i+1, name)
+			}
+			if previous, exists := named[name]; exists {
+				return nil, fmt.Errorf("line %d: duplicate named curve %q (first declared on line %d)", i+1, name, previous)
+			}
+			if value == "" {
+				return nil, fmt.Errorf("line %d: named curve %s(x) requires an expression", i+1, name)
+			}
+			named[name] = i + 1
+			parsed.named = append(parsed.named, plotCurveSource{name: name, value: value, line: i + 1, named: true})
+			continue
+		}
+		if strings.ContainsAny(key, "()") {
+			return nil, fmt.Errorf("line %d: expected a named curve such as f(x) = expression", i+1)
+		}
+		if _, ok := plotConfigKeys[key]; !ok {
+			return nil, fmt.Errorf("line %d: unknown plot key %q; named curves use %s(x) = expression", i+1, key, key)
+		}
+		if _, exists := parsed.config[key]; exists {
 			return nil, fmt.Errorf("line %d: duplicate key %q", i+1, key)
 		}
-		cfg[key] = value
+		parsed.config[key] = plotSourceEntry{value: value, line: i + 1}
 	}
-	spec := &plotSpec{xmin: -10, xmax: 10, samples: defaultPlotSamples}
-	if raw := cfg["title"]; raw != "" {
+
+	legacyCount := 0
+	legacyPresent := false
+	for _, key := range []string{"y", "y2", "y3", "y4"} {
+		if _, exists := parsed.config[key]; exists {
+			legacyPresent = true
+		}
+		if strings.TrimSpace(parsed.value(key)) != "" {
+			legacyCount++
+		}
+	}
+	if len(parsed.named) > 0 && legacyPresent {
+		return nil, fmt.Errorf("named curves and legacy y/y2 curves cannot be mixed in one plot")
+	}
+	if len(parsed.named) > 0 {
+		for _, key := range []string{"label", "label2", "label3", "label4"} {
+			if _, exists := parsed.config[key]; exists {
+				return nil, fmt.Errorf("%s is only available with legacy y curves; named curves use their function names as labels", key)
+			}
+		}
+	}
+	curveCount := legacyCount
+	if len(parsed.named) > 0 {
+		curveCount = len(parsed.named)
+	}
+	if curveCount == 0 {
+		return nil, fmt.Errorf("requires a curve; use f(x) = expression or y = expression")
+	}
+	if curveCount > maxPlotCurves {
+		return nil, fmt.Errorf("supports at most %d curves", maxPlotCurves)
+	}
+	return parsed, nil
+}
+
+func (p *parsedPlotSource) value(key string) string {
+	return p.config[key].value
+}
+
+func isReservedPlotName(name string) bool {
+	if name == "x" || name == "pi" || name == "e" {
+		return true
+	}
+	if _, ok := plotFunctionNames[name]; ok {
+		return true
+	}
+	_, ok := plotConfigKeys[name]
+	return ok
+}
+
+func parsePlotFence(src string) (*plotSpec, error) {
+	return parsePlotFenceWithValues(src, nil)
+}
+
+func parsePlotFenceWithValues(src string, values map[string]Value) (*plotSpec, error) {
+	parsed, err := parsePlotSource(src)
+	if err != nil {
+		return nil, err
+	}
+	spec := &plotSpec{xmin: -10, xmax: 10, samples: defaultPlotSamples, values: values}
+	if raw := parsed.value("title"); raw != "" {
 		spec.title = strings.Trim(strings.TrimSpace(raw), `"'`)
 	}
-	if raw := cfg["x"]; raw != "" {
-		lo, hi, err := parsePlotRange(raw)
+	if raw := parsed.value("x"); raw != "" {
+		lo, hi, err := parsePlotRangeWithValues(raw, values)
 		if err != nil {
 			return nil, fmt.Errorf("x range: %w", err)
 		}
@@ -312,69 +436,289 @@ func parsePlotFence(src string) (*plotSpec, error) {
 	if !isFinite(spec.xmin) || !isFinite(spec.xmax) || spec.xmin >= spec.xmax {
 		return nil, fmt.Errorf("x range must contain two finite increasing numbers")
 	}
-	if raw := cfg["samples"]; raw != "" {
+	if raw := parsed.value("samples"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < minPlotSamples || n > maxPlotSamples {
 			return nil, fmt.Errorf("samples must be an integer from %d to %d", minPlotSamples, maxPlotSamples)
 		}
 		spec.samples = n
 	}
-	keys := []string{"y", "y2", "y3", "y4"}
-	for i, key := range keys {
-		raw := strings.TrimSpace(cfg[key])
-		if raw == "" {
-			continue
+	curveSources := parsed.named
+	if len(curveSources) == 0 {
+		for i, key := range []string{"y", "y2", "y3", "y4"} {
+			raw := strings.TrimSpace(parsed.value(key))
+			if raw == "" {
+				continue
+			}
+			labelKey := "label"
+			if i > 0 {
+				labelKey = fmt.Sprintf("label%d", i+1)
+			}
+			label := strings.Trim(strings.TrimSpace(parsed.value(labelKey)), `"'`)
+			if label == "" {
+				label = raw
+			}
+			curveSources = append(curveSources, plotCurveSource{name: label, value: raw, line: parsed.config[key].line})
 		}
-		expr, err := goparser.ParseExpr(raw)
+	}
+	for _, curve := range curveSources {
+		raw := strings.TrimSpace(curve.value)
+		expr, err := parsePlotExpression(raw)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", key, err)
+			return nil, fmt.Errorf("line %d: curve %s: %w", curve.line, curve.name, err)
 		}
-		labelKey := "label"
-		if i > 0 {
-			labelKey = fmt.Sprintf("label%d", i+1)
+		deps, err := plotExpressionDependencies(expr, true)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: curve %s: %w", curve.line, curve.name, err)
 		}
-		label := strings.Trim(strings.TrimSpace(cfg[labelKey]), `"'`)
-		if label == "" {
-			label = raw
+		if err := validatePlotValues(deps, values); err != nil {
+			return nil, fmt.Errorf("line %d: curve %s: %w", curve.line, curve.name, err)
+		}
+		label := curve.name
+		if curve.named {
+			label += "(x)"
 		}
 		spec.curves = append(spec.curves, plotCurve{label: label, src: raw, expr: expr})
-	}
-	if len(spec.curves) == 0 {
-		return nil, fmt.Errorf("requires y = expression")
-	}
-	if len(spec.curves) > maxPlotCurves {
-		return nil, fmt.Errorf("supports at most %d curves", maxPlotCurves)
 	}
 	return spec, nil
 }
 
 func parsePlotRange(raw string) (float64, float64, error) {
+	return parsePlotRangeWithValues(raw, nil)
+}
+
+func parsePlotRangeExpressions(raw string) (ast.Expr, ast.Expr, error) {
 	trim := strings.TrimSpace(raw)
 	if len(trim) < 5 || trim[0] != '[' || trim[len(trim)-1] != ']' {
-		return 0, 0, fmt.Errorf("expected [min, max]")
+		return nil, nil, fmt.Errorf("expected [min, max]")
 	}
 	inside := trim[1 : len(trim)-1]
 	parts := strings.Split(inside, ",")
 	if len(parts) != 2 {
-		return 0, 0, fmt.Errorf("expected exactly two bounds")
+		return nil, nil, fmt.Errorf("expected exactly two bounds")
 	}
-	loExpr, err := goparser.ParseExpr(strings.TrimSpace(parts[0]))
+	loExpr, err := parsePlotExpression(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return nil, nil, err
+	}
+	hiExpr, err := parsePlotExpression(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return nil, nil, err
+	}
+	return loExpr, hiExpr, nil
+}
+
+func parsePlotRangeWithValues(raw string, values map[string]Value) (float64, float64, error) {
+	loExpr, hiExpr, err := parsePlotRangeExpressions(raw)
 	if err != nil {
 		return 0, 0, err
 	}
-	hiExpr, err := goparser.ParseExpr(strings.TrimSpace(parts[1]))
+	for _, expr := range []ast.Expr{loExpr, hiExpr} {
+		deps, err := plotExpressionDependencies(expr, false)
+		if err != nil {
+			return 0, 0, err
+		}
+		if err := validatePlotValues(deps, values); err != nil {
+			return 0, 0, err
+		}
+	}
+	lo, err := evalPlotASTWithValues(loExpr, 0, false, values)
 	if err != nil {
 		return 0, 0, err
 	}
-	lo, err := evalPlotAST(loExpr, 0)
-	if err != nil {
-		return 0, 0, err
-	}
-	hi, err := evalPlotAST(hiExpr, 0)
+	hi, err := evalPlotASTWithValues(hiExpr, 0, false, values)
 	if err != nil {
 		return 0, 0, err
 	}
 	return lo, hi, nil
+}
+
+func transformPlotSourceInterpolations(src string, replace func(expr, raw string) (string, error)) (string, error) {
+	parts := strings.SplitAfter(src, "\n")
+	var out strings.Builder
+	for _, part := range parts {
+		line := strings.TrimSuffix(part, "\n")
+		transformed, err := transformInlineInterpolations(line, replace)
+		if err != nil {
+			return "", err
+		}
+		if err := writeInterpolationBounded(&out, transformed); err != nil {
+			return "", err
+		}
+		if len(part) > len(line) {
+			if out.Len() >= maxInterpolatedMarkdownBytes {
+				return "", fmt.Errorf("interpolated Markdown exceeds 4 MiB limit")
+			}
+			out.WriteByte('\n')
+		}
+	}
+	return out.String(), nil
+}
+
+func neutralizePlotInterpolations(src string) (string, error) {
+	return transformPlotSourceInterpolations(src, func(_, _ string) (string, error) {
+		return "0", nil
+	})
+}
+
+func interpolatePlotSource(src string, env map[string]Value) (string, error) {
+	return transformPlotSourceInterpolations(src, func(expr, _ string) (string, error) {
+		parsed, err := parseExprBounded(expr)
+		if err != nil {
+			return "", err
+		}
+		value, err := parsed.Eval(env)
+		if err != nil {
+			return "", err
+		}
+		return value.String(), nil
+	})
+}
+
+func plotFenceDependencies(src string) ([]string, error) {
+	neutral, err := neutralizePlotInterpolations(src)
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := parsePlotSource(neutral)
+	if err != nil {
+		return nil, err
+	}
+	set := map[string]struct{}{}
+	collect := func(expr ast.Expr, allowX bool) error {
+		deps, err := plotExpressionDependencies(expr, allowX)
+		if err != nil {
+			return err
+		}
+		for _, dep := range deps {
+			set[dep] = struct{}{}
+		}
+		return nil
+	}
+	if raw := parsed.value("x"); raw != "" {
+		lo, hi, err := parsePlotRangeExpressions(raw)
+		if err != nil {
+			return nil, fmt.Errorf("x range: %w", err)
+		}
+		if err := collect(lo, false); err != nil {
+			return nil, fmt.Errorf("x range: %w", err)
+		}
+		if err := collect(hi, false); err != nil {
+			return nil, fmt.Errorf("x range: %w", err)
+		}
+	}
+	curves := parsed.named
+	if len(curves) == 0 {
+		for _, key := range []string{"y", "y2", "y3", "y4"} {
+			if raw := strings.TrimSpace(parsed.value(key)); raw != "" {
+				curves = append(curves, plotCurveSource{name: key, value: raw, line: parsed.config[key].line})
+			}
+		}
+	}
+	for _, curve := range curves {
+		expr, err := parsePlotExpression(strings.TrimSpace(curve.value))
+		if err != nil {
+			return nil, fmt.Errorf("line %d: curve %s: %w", curve.line, curve.name, err)
+		}
+		if err := collect(expr, true); err != nil {
+			return nil, fmt.Errorf("line %d: curve %s: %w", curve.line, curve.name, err)
+		}
+	}
+	deps := make([]string, 0, len(set))
+	for name := range set {
+		deps = append(deps, name)
+	}
+	return uniqueSorted(deps), nil
+}
+
+func markdownPlotDependencies(text string) ([]string, error) {
+	set := map[string]struct{}{}
+	err := visitMarkdownPlotFences(text, func(src string) error {
+		deps, err := plotFenceDependencies(src)
+		if err != nil {
+			return err
+		}
+		for _, dep := range deps {
+			set[dep] = struct{}{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	deps := make([]string, 0, len(set))
+	for name := range set {
+		deps = append(deps, name)
+	}
+	return uniqueSorted(deps), nil
+}
+
+func visitMarkdownPlotFences(text string, visit func(string) error) error {
+	var fence *markdownFence
+	plotFence := false
+	var plot strings.Builder
+	collect := func() error {
+		return visit(plot.String())
+	}
+
+	for _, line := range strings.Split(text, "\n") {
+		if fence != nil {
+			if isFenceClose(line, *fence) {
+				if plotFence {
+					if err := collect(); err != nil {
+						return err
+					}
+				}
+				fence = nil
+				plotFence = false
+				plot.Reset()
+				continue
+			}
+			if plotFence {
+				if plot.Len() > 0 {
+					plot.WriteByte('\n')
+				}
+				plot.WriteString(line)
+			}
+			continue
+		}
+		if marker, run, info, ok := fenceMarker(line); ok {
+			fence = &markdownFence{marker: marker, length: run}
+			kind := strings.ToLower(strings.TrimSpace(info))
+			plotFence = kind == "plot" || kind == "md0-plot"
+			plot.Reset()
+		}
+	}
+	if fence != nil && plotFence {
+		if err := collect(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateMarkdownPlots(text string, env map[string]Value) error {
+	return visitMarkdownPlotFences(text, func(src string) error {
+		deps, err := plotFenceDependencies(src)
+		if err != nil {
+			return err
+		}
+		values := make(map[string]Value, len(deps))
+		for _, name := range deps {
+			if value, ok := env[name]; ok {
+				values[name] = value
+			}
+		}
+		if err := validatePlotValues(deps, values); err != nil {
+			return err
+		}
+		resolved, err := interpolatePlotSource(src, env)
+		if err != nil {
+			return err
+		}
+		_, err = parsePlotFenceWithValues(resolved, values)
+		return err
+	})
 }
 
 func (p *plotSpec) render() string {
@@ -388,7 +732,7 @@ func (p *plotSpec) render() string {
 		points := make([]plotPoint, p.samples)
 		for i := 0; i < p.samples; i++ {
 			x := p.xmin + (p.xmax-p.xmin)*float64(i)/float64(p.samples-1)
-			y, err := evalPlotAST(curve.expr, x)
+			y, err := evalPlotASTWithValues(curve.expr, x, true, p.values)
 			valid := err == nil && isFinite(y)
 			points[i] = plotPoint{x: x, y: y, valid: valid}
 			if valid {
@@ -484,7 +828,185 @@ type plotPoint struct {
 	valid bool
 }
 
+func parsePlotExpression(src string) (ast.Expr, error) {
+	if len(src) > maxPlotExpressionBytes {
+		return nil, fmt.Errorf("plot expression exceeds %d KiB limit", maxPlotExpressionBytes/1024)
+	}
+	masked, keywords := maskPlotKeywordIdentifiers(src)
+	expr, err := goparser.ParseExpr(masked)
+	if err != nil {
+		return nil, err
+	}
+	if len(keywords) > 0 {
+		ast.Inspect(expr, func(node ast.Node) bool {
+			ident, ok := node.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if original, ok := keywords[int(ident.Pos())-1]; ok {
+				ident.Name = original
+			}
+			return true
+		})
+	}
+	return expr, nil
+}
+
+// md0 identifiers may share spelling with Go keywords. Capitalizing only those
+// scanner tokens lets the standard parser accept them as identifiers; AST
+// positions then restore the exact md0 names before dependency collection.
+func maskPlotKeywordIdentifiers(src string) (string, map[int]string) {
+	masked := []byte(src)
+	fileSet := gotoken.NewFileSet()
+	file := fileSet.AddFile("plot", fileSet.Base(), len(src))
+	var scanner goscanner.Scanner
+	scanner.Init(file, []byte(src), func(gotoken.Position, string) {}, 0)
+	keywords := map[int]string{}
+	for {
+		position, token, literal := scanner.Scan()
+		if token == gotoken.EOF {
+			break
+		}
+		if !token.IsKeyword() {
+			continue
+		}
+		offset := file.Offset(position)
+		keywords[offset] = literal
+		masked[offset] = literal[0] - 'a' + 'A'
+	}
+	return string(masked), keywords
+}
+
+func plotExpressionDependencies(expr ast.Expr, allowX bool) ([]string, error) {
+	set := map[string]struct{}{}
+	nodes := 0
+	var walk func(ast.Expr, int) error
+	walk = func(node ast.Expr, depth int) error {
+		nodes++
+		if nodes > maxPlotExpressionNodes {
+			return fmt.Errorf("plot expression exceeds %d-node limit", maxPlotExpressionNodes)
+		}
+		if depth > maxPlotExpressionDepth {
+			return fmt.Errorf("plot expression exceeds %d-level nesting limit", maxPlotExpressionDepth)
+		}
+		switch n := node.(type) {
+		case *ast.BasicLit:
+			if n.Kind != gotoken.INT && n.Kind != gotoken.FLOAT {
+				return fmt.Errorf("only numeric literals are allowed")
+			}
+			value, err := strconv.ParseFloat(n.Value, 64)
+			if err != nil || !isFinite(value) {
+				return fmt.Errorf("invalid numeric literal %q", n.Value)
+			}
+			return nil
+		case *ast.Ident:
+			switch n.Name {
+			case "x":
+				if !allowX {
+					return fmt.Errorf("x is only available inside curve expressions")
+				}
+				return nil
+			case "pi", "e":
+				return nil
+			}
+			if _, reserved := plotFunctionNames[n.Name]; reserved {
+				return fmt.Errorf("plot function %q must be called", n.Name)
+			}
+			set[n.Name] = struct{}{}
+			return nil
+		case *ast.ParenExpr:
+			return walk(n.X, depth+1)
+		case *ast.UnaryExpr:
+			if n.Op != gotoken.ADD && n.Op != gotoken.SUB {
+				return fmt.Errorf("unsupported unary operator %s", n.Op)
+			}
+			return walk(n.X, depth+1)
+		case *ast.BinaryExpr:
+			switch n.Op {
+			case gotoken.ADD, gotoken.SUB, gotoken.MUL, gotoken.QUO, gotoken.REM, gotoken.XOR:
+			default:
+				return fmt.Errorf("unsupported operator %s", n.Op)
+			}
+			if err := walk(n.X, depth+1); err != nil {
+				return err
+			}
+			return walk(n.Y, depth+1)
+		case *ast.CallExpr:
+			if n.Ellipsis.IsValid() {
+				return fmt.Errorf("variadic call syntax is not allowed")
+			}
+			ident, ok := n.Fun.(*ast.Ident)
+			if !ok {
+				return fmt.Errorf("only named math functions are allowed")
+			}
+			if _, ok := plotFunctionNames[ident.Name]; !ok {
+				return fmt.Errorf("unknown plot function %q", ident.Name)
+			}
+			if err := validatePlotFunctionArity(ident.Name, len(n.Args)); err != nil {
+				return err
+			}
+			for _, arg := range n.Args {
+				if err := walk(arg, depth+1); err != nil {
+					return err
+				}
+			}
+			return nil
+		default:
+			return fmt.Errorf("unsupported plot expression %T", node)
+		}
+	}
+	if err := walk(expr, 1); err != nil {
+		return nil, err
+	}
+	deps := make([]string, 0, len(set))
+	for name := range set {
+		deps = append(deps, name)
+	}
+	return uniqueSorted(deps), nil
+}
+
+func validatePlotFunctionArity(name string, count int) error {
+	switch name {
+	case "sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "abs", "exp", "log", "ln", "log10", "floor", "ceil", "round":
+		if count != 1 {
+			return fmt.Errorf("%s expects 1 argument", name)
+		}
+	case "pow":
+		if count != 2 {
+			return fmt.Errorf("pow expects 2 arguments")
+		}
+	case "min", "max":
+		if count < 1 {
+			return fmt.Errorf("%s expects at least 1 argument", name)
+		}
+	default:
+		return fmt.Errorf("unknown plot function %q", name)
+	}
+	return nil
+}
+
+func validatePlotValues(deps []string, values map[string]Value) error {
+	for _, name := range deps {
+		value, ok := values[name]
+		if !ok {
+			return fmt.Errorf("unknown document value %q", name)
+		}
+		number, err := value.AsNumber()
+		if err != nil {
+			return fmt.Errorf("document value %q must be numeric, got %s", name, value.TypeName())
+		}
+		if !isFinite(number) {
+			return fmt.Errorf("document value %q must be finite", name)
+		}
+	}
+	return nil
+}
+
 func evalPlotAST(expr ast.Expr, x float64) (float64, error) {
+	return evalPlotASTWithValues(expr, x, true, nil)
+}
+
+func evalPlotASTWithValues(expr ast.Expr, x float64, allowX bool, values map[string]Value) (float64, error) {
 	var eval func(ast.Expr) (float64, error)
 	eval = func(node ast.Expr) (float64, error) {
 		switch n := node.(type) {
@@ -500,14 +1022,30 @@ func evalPlotAST(expr ast.Expr, x float64) (float64, error) {
 		case *ast.Ident:
 			switch n.Name {
 			case "x":
+				if !allowX {
+					return 0, fmt.Errorf("x is only available inside curve expressions")
+				}
 				return x, nil
 			case "pi":
 				return math.Pi, nil
 			case "e":
 				return math.E, nil
-			default:
-				return 0, fmt.Errorf("unknown plot symbol %q; use {{ %s }} for md0 values", n.Name, n.Name)
 			}
+			if _, reserved := plotFunctionNames[n.Name]; reserved {
+				return 0, fmt.Errorf("plot function %q must be called", n.Name)
+			}
+			value, ok := values[n.Name]
+			if !ok {
+				return 0, fmt.Errorf("unknown document value %q", n.Name)
+			}
+			number, err := value.AsNumber()
+			if err != nil {
+				return 0, fmt.Errorf("document value %q must be numeric, got %s", n.Name, value.TypeName())
+			}
+			if !isFinite(number) {
+				return 0, fmt.Errorf("document value %q must be finite", n.Name)
+			}
+			return number, nil
 		case *ast.ParenExpr:
 			return eval(n.X)
 		case *ast.UnaryExpr:
@@ -560,9 +1098,18 @@ func evalPlotAST(expr ast.Expr, x float64) (float64, error) {
 			}
 			return v, nil
 		case *ast.CallExpr:
+			if n.Ellipsis.IsValid() {
+				return 0, fmt.Errorf("variadic call syntax is not allowed")
+			}
 			ident, ok := n.Fun.(*ast.Ident)
 			if !ok {
 				return 0, fmt.Errorf("only named math functions are allowed")
+			}
+			if _, ok := plotFunctionNames[ident.Name]; !ok {
+				return 0, fmt.Errorf("unknown plot function %q", ident.Name)
+			}
+			if err := validatePlotFunctionArity(ident.Name, len(n.Args)); err != nil {
+				return 0, err
 			}
 			args := make([]float64, len(n.Args))
 			for i, arg := range n.Args {

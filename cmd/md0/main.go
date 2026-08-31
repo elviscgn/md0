@@ -55,7 +55,7 @@ Usage:
   md0 render [-o FILE] [--values FILE] [--data NAME=FILE] [--snapshot FILE] FILE
   md0 inspect FILE
 
-Run md0 FILE in a terminal for the interactive document launcher.
+Run md0 FILE in a terminal for the persistent document app.
 `)
 }
 

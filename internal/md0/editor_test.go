@@ -78,6 +78,8 @@ func TestEditorAssetsExposeLanguageAwareAuthoringWithoutDependencies(t *testing.
 		"@chart name",
 		"md0ExpressionBuiltins",
 		"md0EditorSymbols",
+		"f(x) = sin(x)",
+		"...md0EditorSymbols()",
 	} {
 		if !strings.Contains(editorJS, want) {
 			t.Fatalf("editor authoring assets missing %q", want)

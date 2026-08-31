@@ -32,6 +32,12 @@ The plot renderer does not execute Go. `go/parser` is used only to obtain an exp
 
 The loopback viewer's capability tokens, CSP hashes, host/origin checks, request limits, and session store are also implemented only with Go's standard library. See `SECURITY.md` for the threat model.
 
+## Release footprint
+
+Official builds use Go's `nethttpomithttp2` build tag. md0 serves plain HTTP/1.1 on loopback and does not expose HTTPS or h2c, so the bundled HTTP/2 implementation is unreachable product surface. Omitting it reduces the shipped binary without replacing `net/http`, weakening the viewer's security controls, or changing document/runtime behavior.
+
+`make build`, the complete local check suite, CI portability jobs, reproducibility checks, and release builds all use the same tag so the tested configuration is the shipped configuration.
+
 ## Runtime dependency proof
 
 `go.mod` contains no `require` directive. The strongest quick check is the module build list:

@@ -176,6 +176,7 @@ func FuzzParseAndEvaluateNeverPanics(f *testing.F) {
 		"Value: @input x number = 1\n@calc y = x * 2\n**{{ y }}**\n",
 		"@assert true\nok\n@end\n",
 		"@chart x\nlabels = [\"a\"]\nvalues = [1]\n@end\n",
+		"Amplitude: @input amplitude number = 2\n```plot\nf(x) = amplitude * sin(x)\nx = [-pi, pi]\n```\n",
 		"```\n@calc this_is_code = 1\n```\n",
 	}
 	for _, seed := range seeds {

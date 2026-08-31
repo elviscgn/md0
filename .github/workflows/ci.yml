@@ -16,6 +16,8 @@ permissions:
 
 env:
   GO_VERSION: '1.27.x'
+  # The viewer is loopback HTTP/1.1 only; omit Go's unused bundled HTTP/2 implementation.
+  GOFLAGS: '-tags=nethttpomithttp2'
 
 jobs:
   verify:

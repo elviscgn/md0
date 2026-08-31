@@ -32,7 +32,7 @@ Primary implementation: `internal/md0/ast.go`.
 
 The AST keeps declarative document constructs as small typed nodes. Calculation and condition expressions use the bounded md0 expression AST.
 
-Mathematical notation and plot fences intentionally remain inside `MarkdownNode` for the current vertical slice. This lets them inherit Markdown interpolation/reactivity without expanding the core language AST or authority model.
+Mathematical notation and plot fences intentionally remain inside `MarkdownNode` for the current vertical slice. Math inherits Markdown interpolation. Plot fences additionally expose their parsed external numeric identifiers to the dependency graph without expanding the core language AST or authority model.
 
 ## Expressions
 
@@ -48,7 +48,7 @@ Primary implementation: `internal/md0/graph.go`.
 
 Each reactive/semantic node receives a stable dependency node ID. Producers define named values. Consumers record symbolic dependencies. Unknown values and cycles are rejected before evaluation.
 
-Markdown dependencies come from `{{ expression }}` interpolation. Ordinary code spans and ordinary fenced code suppress interpolation. Semantic plot fences opt into interpolation so graph parameters are explicit in source and automatically participate in invalidation.
+Markdown dependencies come from `{{ expression }}` interpolation and from bare external identifiers parsed inside semantic plot curve/range expressions. Ordinary code spans and ordinary fenced code suppress both behaviors. Plot rendering receives only values registered during dependency discovery, so incremental invalidation remains complete and interpolated text cannot introduce a hidden lookup.
 
 ## Evaluation plan
 

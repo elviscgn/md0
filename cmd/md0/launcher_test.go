@@ -21,6 +21,7 @@ func TestReadLauncherKey(t *testing.T) {
 		{name: "enter", input: "\r", want: launcherKeySelect},
 		{name: "edit", input: "e", want: launcherKeyEdit},
 		{name: "quit", input: "q", want: launcherKeyQuit},
+		{name: "escape", input: "\x1b", want: launcherKeyQuit},
 		{name: "control c", input: "\x03", want: launcherKeyQuit},
 	}
 	for _, test := range tests {
@@ -50,6 +51,15 @@ func TestLauncherViewIsCompactAndMarksSelection(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Fatalf("launcher view missing %q:\n%s", want, view)
 		}
+	}
+}
+
+func TestLauncherEditLabelTreatsEditorAsAppMode(t *testing.T) {
+	if got := launcherOptions[0].label; got != "Edit document" {
+		t.Fatalf("edit label=%q", got)
+	}
+	if got := launcherOptions[0].hint; got != "full-screen editor" {
+		t.Fatalf("edit hint=%q", got)
 	}
 }
 
