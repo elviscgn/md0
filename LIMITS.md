@@ -2,7 +2,7 @@
 
 md0/PURE intentionally bounds document execution and local-runtime I/O so malformed or adversarial input cannot grow work without limit.
 
-| Limit | Current v0.2 bound | Enforced by |
+| Limit | Current v0.1 bound | Enforced by |
 |---|---:|---|
 | Document size | 2 MiB | `ParseFile` / `ParseString` |
 | Document encoding | valid UTF-8 | parser boundary |

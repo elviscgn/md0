@@ -123,7 +123,7 @@ md0 open --data assumptions=examples/data/scenario-assumptions.json examples/sce
 
 **md0 keeps the explanation, assumptions, calculations, and validity checks in the same file.**
 
-## What v0.2 actually does
+## What v0.1 actually does
 
 - handwritten Markdown/directive parser and expression engine
 - dependency graph with cycle/unknown-symbol validation
@@ -239,7 +239,7 @@ Every push also runs formatting, `go vet`, unit tests, the adversarial security 
 
 ## Current scope
 
-v0.2 intentionally implements a focused Markdown subset rather than all of CommonMark, and bar charts are the first chart type. The language is deliberately small enough to inspect and bound.
+v0.1 intentionally implements a focused Markdown subset rather than all of CommonMark, and bar charts are the first chart type. The language is deliberately small enough to inspect and bound.
 
 The dependency graph, dependency-first evaluation, incremental recomputation, and targeted DOM patching are implemented today — they are not roadmap claims.
 
