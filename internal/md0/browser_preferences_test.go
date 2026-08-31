@@ -12,6 +12,7 @@ func TestInteractiveRuntimePageIncludesViewerPreferences(t *testing.T) {
 		`id="md0-settings-toggle"`,
 		`id="md0-settings-panel"`,
 		`data-md0-preference="theme"`,
+		`data-md0-preference="palette"`,
 		`data-md0-preference="font"`,
 		`data-md0-preference="density"`,
 		`data-md0-preference="textSize"`,
@@ -20,6 +21,12 @@ func TestInteractiveRuntimePageIncludesViewerPreferences(t *testing.T) {
 		`>System<`,
 		`>Light<`,
 		`>Dark<`,
+		`>Ocean<`,
+		`>Forest<`,
+		`>Ember<`,
+		`id="md0-export-pdf"`,
+		`id="md0-export-docx"`,
+		`window.print()`,
 		`md0-segmented`,
 		`md0EnhanceInputs`,
 		`md0-stepper`,
@@ -41,6 +48,8 @@ func TestStaticPageDoesNotIncludeViewerControls(t *testing.T) {
 		`md0-settings-panel`,
 		`md0:preferences:v1`,
 		`md0-export-snapshot`,
+		`md0-export-pdf`,
+		`md0-export-docx`,
 	} {
 		if strings.Contains(page, forbidden) {
 			t.Fatalf("static page unexpectedly contains viewer-only control %q", forbidden)
