@@ -8,7 +8,7 @@
 [![Markdown](https://img.shields.io/badge/Markdown-native-231F20?style=for-the-badge&logo=markdown&logoColor=white)](#)
 [![PURE](https://img.shields.io/badge/md0%2FPURE-bounded-C25A2B?style=for-the-badge&logo=letsencrypt&logoColor=white)](SECURITY.md)
 [![Dependencies](https://img.shields.io/badge/runtime_deps-0-2E7D4F?style=for-the-badge&logo=dependabot&logoColor=white)](STDLIB.md)
-[![Status](https://img.shields.io/badge/status-v0.2.0-7A6E67?style=for-the-badge&logo=readthedocs&logoColor=white)](#)
+[![Status](https://img.shields.io/badge/status-v0.1.0-7A6E67?style=for-the-badge&logo=readthedocs&logoColor=white)](#)
 
 </div>
 
@@ -58,7 +58,7 @@ Tagged releases include checksum-verified archives for Linux, macOS, and Windows
 curl -fsSL https://raw.githubusercontent.com/elviscgn/md0/main/install.sh | sh
 ```
 
-Set `INSTALL_DIR` to install somewhere other than `/usr/local/bin`, or `MD0_VERSION=v0.2.0` to select an exact release. From source:
+Set `INSTALL_DIR` to install somewhere other than `/usr/local/bin`, or `MD0_VERSION=v0.1.0` to select an exact release. From source:
 
 ```bash
 go install github.com/elviscgn/md0/cmd/md0@latest

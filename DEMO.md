@@ -19,7 +19,7 @@ make build
 Expected version:
 
 ```text
-md0 v0.2.0
+md0 v0.1.0
 ```
 
 Then show that `go.mod` contains no `require` block:
